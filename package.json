@@ -1,0 +1,14 @@
+{
+  "name": "rocketperf",
+  "version": "0.0.1",
+  "description": "view the performance of rocketpool nodes",
+  "license": "AGPL-3.0-or-later",
+  "repository": "github:xrchz/rocketperf",
+  "type": "module",
+  "dependencies": {
+    "ethers": "6",
+    "express": "4",
+    "helmet": "7",
+    "socket.io": "4"
+  }
+}

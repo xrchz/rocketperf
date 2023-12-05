@@ -1,8 +1,9 @@
+import 'dotenv/config'
 import { ethers } from 'ethers'
+import { readFileSync } from 'node:fs'
 import express from 'express'
 import helmet from 'helmet'
-import https from 'node:https' // TODO: use this when server is set up
-import http from 'node:http'
+import https from 'node:https'
 import { Server } from 'socket.io'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,6 +11,13 @@ import { fileURLToPath } from 'node:url'
 const app = express()
 
 app.use(helmet())
+
+// when obtaining the certificate:
+// app.use('/.well-known', express.static('.well-known'))
+const httpsOptions = {
+  key: readFileSync(process.env.KEY),
+  cert: readFileSync(process.env.CERT)
+}
 
 const options = {root: dirname(fileURLToPath(import.meta.url))}
 
@@ -29,11 +37,11 @@ app.get('/icon.png', (req, res) => {
   res.sendFile('icon.png', options)
 })
 
-const server = http.createServer(app)
+const server = https.createServer(httpsOptions, app)
 const io = new Server(server)
-server.listen(3000)
+server.listen(443)
 
-const provider = new ethers.JsonRpcProvider()
+const provider = new ethers.JsonRpcProvider(process.env.RPC)
 const rocketStorage = new ethers.Contract(
   await provider.resolveName('rocketstorage.eth'),
   ['function getAddress(bytes32 _key) view returns (address)'],

@@ -6,6 +6,7 @@
   "repository": "github:xrchz/rocketperf",
   "type": "module",
   "dependencies": {
+    "dotenv": "16",
     "ethers": "6",
     "express": "4",
     "helmet": "7",

@@ -7,3 +7,12 @@ body {
   color: indigo;
   font-family: sans-serif;
 }
+td.address {
+  font-family: monospace;
+}
+td.validator {
+  text-align: right;
+}
+td.selected {
+  text-align: center;
+}

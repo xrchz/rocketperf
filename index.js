@@ -15,18 +15,27 @@ perfHeading.innerText = 'Performance of Selected Validators'
 
 const entityEntryBox = document.createElement('textarea')
 entityEntryBox.placeholder = 'Node, minipool, or withdrawal addresses/ENS names, and/or validator pubkeys/indices, separated by spaces or commas'
-entityEntryBox.cols = 42
-entityEntryBox.rows = 5
+entityEntryBox.cols = 96
+entityEntryBox.rows = 6
 
 entityEntryBox.addEventListener('change',
   () => socket.emit('entities', entityEntryBox.value)
   ,{passive: true})
 
-const selectedEntitiesList = document.createElement('ul')
+const minipoolsList = document.createElement('table')
+const headings = ['Minipool', 'Node', 'Validator', 'Include']
+minipoolsList.appendChild(document.createElement('tr'))
+  .append(
+    ...headings.map(h => {
+      const th = document.createElement('th')
+      th.innerText = h
+      return th
+    })
+  )
 
 socket.on('minipools', minipools => {
   for (const {minipoolAddress, minipoolEnsName, nodeAddress, nodeEnsName, validatorIndex, selected} of minipools) {
-    const li = frag.appendChild(document.createElement('li'))
+    const tr = frag.appendChild(document.createElement('tr'))
     const mpA = document.createElement('a')
     mpA.href = `https://rocketscan.io/minipool/${minipoolAddress}`
     mpA.innerText = minipoolEnsName || minipoolAddress
@@ -39,15 +48,22 @@ socket.on('minipools', minipools => {
     const sel = document.createElement('input')
     sel.type = 'checkbox'
     sel.checked = selected
-    li.append(
-      document.createTextNode('minipool: '), mpA,
-      document.createTextNode(' (node: '), nodeA, document.createTextNode(') '),
-      document.createTextNode(' (validator: '), valA, document.createTextNode(') '),
-      sel
+    tr.append(
+      ...[mpA, nodeA, valA, sel].map(a => {
+        const td = document.createElement('td')
+        td.appendChild(a)
+        return td
+      })
     )
+    mpA.parentElement.classList.add('minipool')
+    if (!minipoolEnsName) mpA.parentElement.classList.add('address')
+    nodeA.parentElement.classList.add('node')
+    if (!nodeEnsName) nodeA.parentElement.classList.add('address')
+    valA.parentElement.classList.add('validator')
+    sel.parentElement.classList.add('selected')
   }
-  selectedEntitiesList.replaceChildren()
-  selectedEntitiesList.appendChild(frag)
+  minipoolsList.replaceChildren(minipoolsList.firstElementChild)
+  minipoolsList.appendChild(frag)
 })
 
 body.append(
@@ -55,6 +71,6 @@ body.append(
   entryHeading,
   entityEntryBox,
   selectedHeading,
-  selectedEntitiesList,
+  minipoolsList,
   perfHeading
 )

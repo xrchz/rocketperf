@@ -17,6 +17,7 @@ const entityEntryBox = document.createElement('textarea')
 entityEntryBox.placeholder = 'Node, minipool, or withdrawal addresses/ENS names, and/or validator pubkeys/indices, separated by spaces or commas'
 entityEntryBox.cols = 96
 entityEntryBox.rows = 6
+entityEntryBox.autocomplete = 'on'
 
 entityEntryBox.addEventListener('change',
   () => socket.emit('entities', entityEntryBox.value)

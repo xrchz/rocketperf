@@ -107,44 +107,71 @@ async function getIndexFromPubkey(pubkey) {
   return await response.json().then(j => j.data.index)
 }
 
+async function getPubkeyFromIndex(index) {
+  const path = `/eth/v1/beacon/states/head/validators/${index}`
+  const url = new URL(path, beaconRpcUrl)
+  const response = await fetch(url)
+  if (response.status === 404)
+    return null
+  if (response.status !== 200)
+    console.warn(`Unexpected response status getting ${index} pubkey: ${response.status}`)
+  return await response.json().then(j => j.data.validator.pubkey)
+}
+
 const isNumber = /^[1-9]\d*$/
 
 // TODO: cache entities, including selectedness (per socketid?)
 
-async function lookupMinipool({minipoolAddress, nodeInfo}) {
+async function lookupMinipool({minipoolAddress, nodeInfo, validatorInfo}) {
+  console.log(`Lookup minipool ${minipoolAddress}`)
   const minipool = new ethers.Contract(minipoolAddress, minipoolAbi, provider)
   async function getNodeInfo() {
     const nodeAddress = await minipool.getNodeAddress()
     const nodeEnsName = await provider.lookupAddress(nodeAddress)
     return {nodeAddress, nodeEnsName}
   }
+  async function getValidatorInfo() {
+    const pubkey = await rocketMinipoolManager.getMinipoolPubkey(minipoolAddress)
+    const validatorIndex = await getIndexFromPubkey(pubkey).then(i => (i < 0 ? 'none' : i.toString()))
+    return {pubkey, validatorIndex}
+  }
   const {nodeAddress, nodeEnsName} = nodeInfo || await getNodeInfo()
-  const pubkey = await rocketMinipoolManager.getMinipoolPubkey(minipoolAddress)
+  const {pubkey, validatorIndex} = validatorInfo || await getValidatorInfo()
   return {
     minipoolAddress,
     minipoolEnsName: await provider.lookupAddress(minipoolAddress),
     nodeAddress,
     nodeEnsName,
-    validatorIndex: await getIndexFromPubkey(pubkey).then(i => (i < 0 ? 'none' : i.toString())),
+    validatorIndex,
     selected: true
   }
 }
 
 async function lookupEntity(entity) {
   let s = entity
+  let minipoolAddress
+  let nodeInfo
+  let validatorInfo
   const items = []
   while (true) {
+    if (minipoolAddress) {
+      await lookupMinipool(
+        {minipoolAddress, nodeInfo, validatorInfo}
+      ).then(i => items.push(i))
+      break
+    }
     if (ethers.isAddress(s)) {
       console.log(`Parsed ${s} as an address`)
       if (await rocketMinipoolManager.getMinipoolExists(s)) {
         console.log(`${s} exists as minipool`)
-        await lookupMinipool({minipoolAddress: s}).then(i => items.push(i))
-        break
+        minipoolAddress = s
+        continue
       }
       if (await rocketNodeManager.getNodeExists(s)) {
         console.log(`${s} exists as node`)
         const nodeAddress = s
         const nodeEnsName = await provider.lookupAddress(nodeAddress)
+        nodeInfo = {nodeAddress, nodeEnsName}
         const n = await rocketMinipoolManager.getNodeMinipoolCount(nodeAddress)
         console.log(`${s} has ${n} minipools`)
         const minipoolAddresses = await multicall(
@@ -155,25 +182,39 @@ async function lookupEntity(entity) {
           })))
         items.push(...await Promise.all(
           minipoolAddresses.map(minipoolAddress =>
-            lookupMinipool({minipoolAddress, nodeInfo: {nodeAddress, nodeEnsName}})))
+            lookupMinipool({minipoolAddress, nodeInfo})))
         )
+        nodeInfo = null
       }
       // TODO: check withdrawal address
     }
     if (ethers.isHexString(s, 48)) {
-      const minipoolAddress = await rocketMinipoolManager.getMinipoolByPubkey(s)
+      minipoolAddress = await rocketMinipoolManager.getMinipoolByPubkey(s)
       if (minipoolAddress != nullAddress) {
         console.log(`${s} exists as minipool pubkey`)
-        break
+        const pubkey = s
+        const validatorIndex = validatorInfo?.validatorIndex || await getIndexFromPubkey(pubkey)
+        if (0 <= validatorIndex) {
+          validatorInfo = {pubkey, validatorIndex}
+          continue
+        }
+      }
+      else {
+        minipoolAddress = null
       }
     }
     if (isNumber.test(s)) {
       console.log(`${s} is a number`)
-      // TODO: test validator index
-      break
+      const pubkey = await getPubkeyFromIndex(s)
+      if (pubkey) {
+        validatorInfo = {validatorIndex: s}
+        s = pubkey
+        continue
+      }
     }
     console.log(`${s} not found, trying as ENS`)
-    s = await provider.resolveName(s)
+    try { s = await provider.resolveName(s) }
+    catch { s = null }
     if (!s) break
     console.log(`resolved as ${s}: rerunning`)
   }

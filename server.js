@@ -52,6 +52,16 @@ server.listen(443)
 
 const provider = new ethers.JsonRpcProvider(process.env.RPC)
 const chainId = await provider.getNetwork().then(n => n.chainId)
+
+const secondsPerSlot = 12n
+const slotsPerEpoch = 32n
+const genesisTimes = {
+  1: 1606824023n
+}
+const genesisTime = genesisTimes[chainId]
+const timeToSlot = (t) => parseInt((t - genesisTime) / secondsPerSlot)
+const slotToTime = (s) => parseInt(genesisTime + BigInt(s) * secondsPerSlot)
+
 const beaconRpcUrl = process.env.BN
 
 const nullAddress = '0x'.padEnd(42, '0')
@@ -160,10 +170,7 @@ async function lookupMinipool({minipoolAddress, nodeInfo, validatorInfo}) {
 
 async function lookupEntity(entity) {
   let s = entity
-  let minipoolAddress
-  let nodeInfo
-  let validatorInfo
-  let starred = false
+  let minipoolAddress, nodeInfo, validatorInfo, starred = false
   const values = []
   async function tryProcessNode(s) {
     if (await rocketNodeManager.getNodeExists(s)) {
@@ -248,6 +255,12 @@ async function lookupEntity(entity) {
   return {entity, values}
 }
 
+const dateToTimestring = (d) => {
+  const s = d.toISOString().slice(0, -5)
+  if (s.endsWith(':00')) return s.slice(0, -3)
+  return s
+}
+
 io.on('connection', socket => {
 
   log(`connection: ${socket.id}`)
@@ -264,6 +277,27 @@ io.on('connection', socket => {
         socket.emit('unknownEntities', minipools.flatMap(x => x.values.length ? [] : [x.entity]))
       }
     )
+  })
+
+  socket.on('setSlot', ({dir, type, value}) => {
+    const keySlot = `${dir}Slot`
+    const keyTime = `${dir}Datetime`
+    const currentTimeBig = BigInt(Date.now()) / 1000n
+    const currentSlot = timeToSlot(currentTimeBig)
+    let slot, time
+    if (type === 'number') {
+      slot = parseInt(value) || (dir === 'to' ? currentSlot : 0)
+    }
+    else {
+      time = (new Date(value)).getTime()
+      time = time ? BigInt(time) / 1000n :
+                    dir === 'to' ? currentTimeBig : BigInt(slotToTime(0))
+      slot = timeToSlot(time)
+    }
+    slot = Math.max(0, Math.min(slot, currentSlot))
+    time = dateToTimestring(new Date(slotToTime(slot) * 1000))
+    socket.emit('setSlot', keySlot, slot)
+    socket.emit('setSlot', keyTime, time)
   })
 
   socket.on('disconnect', () => {

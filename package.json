@@ -10,6 +10,7 @@
     "ethers": "6",
     "express": "4",
     "helmet": "7",
+    "lmdb": "2",
     "socket.io": "4"
   }
 }

@@ -7,6 +7,9 @@ import https from 'node:https'
 import { Server } from 'socket.io'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { open } from 'lmdb'
+
+const db = open({path: 'db', encoder: {structuredClone: true}})
 
 const app = express()
 
@@ -42,6 +45,7 @@ const io = new Server(server)
 server.listen(443)
 
 const provider = new ethers.JsonRpcProvider(process.env.RPC)
+const chainId = await provider.getNetwork().then(n => n.chainId)
 const beaconRpcUrl = process.env.BN
 
 const nullAddress = '0x'.padEnd(42, '0')
@@ -86,7 +90,8 @@ const rocketMinipoolManager = new ethers.Contract(
 
 const rocketNodeManager = new ethers.Contract(
   await getRocketAddress('rocketNodeManager'), [
-    'function getNodeExists(address) view returns (bool)'
+    'function getNodeExists(address) view returns (bool)',
+    'function getNodeWithdrawalAddress(address) view returns (address)'
   ], provider)
 
 console.log(`Minipool Manager: ${await rocketMinipoolManager.getAddress()}`)
@@ -152,8 +157,34 @@ async function lookupEntity(entity) {
   let minipoolAddress
   let nodeInfo
   let validatorInfo
+  let starred = false
   const items = []
+  async function tryProcessNode(s) {
+    if (await rocketNodeManager.getNodeExists(s)) {
+      console.log(`${s} exists as node`)
+      const nodeAddress = s
+      const nodeEnsName = await provider.lookupAddress(nodeAddress)
+      nodeInfo = {nodeAddress, nodeEnsName}
+      const n = await rocketMinipoolManager.getNodeMinipoolCount(nodeAddress)
+      console.log(`${s} has ${n} minipools`)
+      const minipoolAddresses = await multicall(
+        Array(parseInt(n)).fill().map((_, i) => ({
+          contract: rocketMinipoolManager,
+          fn: 'getNodeMinipoolAt',
+          args: [nodeAddress, i]
+        })))
+      items.push(...await Promise.all(
+        minipoolAddresses.map(minipoolAddress =>
+          lookupMinipool({minipoolAddress, nodeInfo})))
+      )
+      nodeInfo = null
+    }
+  }
   while (true) {
+    if (!starred && s.endsWith('*')) {
+      s = s.slice(0, -1)
+      starred = true
+    }
     if (minipoolAddress) {
       await lookupMinipool(
         {minipoolAddress, nodeInfo, validatorInfo}
@@ -167,26 +198,15 @@ async function lookupEntity(entity) {
         minipoolAddress = s
         continue
       }
-      if (await rocketNodeManager.getNodeExists(s)) {
-        console.log(`${s} exists as node`)
-        const nodeAddress = s
-        const nodeEnsName = await provider.lookupAddress(nodeAddress)
-        nodeInfo = {nodeAddress, nodeEnsName}
-        const n = await rocketMinipoolManager.getNodeMinipoolCount(nodeAddress)
-        console.log(`${s} has ${n} minipools`)
-        const minipoolAddresses = await multicall(
-          Array(parseInt(n)).fill().map((_, i) => ({
-            contract: rocketMinipoolManager,
-            fn: 'getNodeMinipoolAt',
-            args: [nodeAddress, i]
-          })))
-        items.push(...await Promise.all(
-          minipoolAddresses.map(minipoolAddress =>
-            lookupMinipool({minipoolAddress, nodeInfo})))
-        )
-        nodeInfo = null
+      await tryProcessNode(s)
+      const nodeAddresses = db.get(`${chainId}/withdrawalAddress/${s}`)
+      if (nodeAddresses) {
+        for (const nodeAddress of nodeAddresses.values()) {
+          if (starred || await rocketNodeManager.getNodeWithdrawalAddress(
+                                 nodeAddress).then(w => w === s))
+            await tryProcessNode(nodeAddress)
+        }
       }
-      // TODO: check withdrawal address
     }
     if (ethers.isHexString(s, 48)) {
       minipoolAddress = await rocketMinipoolManager.getMinipoolByPubkey(s)
@@ -212,7 +232,7 @@ async function lookupEntity(entity) {
         continue
       }
     }
-    console.log(`${s} not found, trying as ENS`)
+    console.log(`Trying ${s} as ENS`)
     try { s = await provider.resolveName(s) }
     catch { s = null }
     if (!s) break

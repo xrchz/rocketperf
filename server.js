@@ -9,6 +9,12 @@ import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { open } from 'lmdb'
 
+const timestamp = () => Intl.DateTimeFormat(
+    'en-GB', {hour: 'numeric', minute: 'numeric', second: 'numeric'}
+  ).format(new Date())
+
+const log = s => console.log(`${timestamp()} ${s}`)
+
 const db = open({path: 'db', encoder: {structuredClone: true}})
 
 const app = express()
@@ -55,7 +61,7 @@ const multicallContract = new ethers.Contract(
   ['function aggregate((address,bytes)[]) view returns (uint256, bytes[])'],
   provider)
 function multicall(calls) {
-  console.log(`entered multicall with ${calls.length} calls`)
+  log(`entered multicall with ${calls.length} calls`)
   const margs = []
   const posts = []
   for (const {contract, fn, args} of calls) {
@@ -75,7 +81,7 @@ const rocketStorage = new ethers.Contract(
   ['function getAddress(bytes32 _key) view returns (address)'],
   provider
 )
-console.log(`Rocket Storage: ${await rocketStorage.getAddress()}`)
+log(`Rocket Storage: ${await rocketStorage.getAddress()}`)
 
 const getRocketAddress = name => rocketStorage['getAddress(bytes32)'](ethers.id(`contract.address${name}`))
 
@@ -94,8 +100,8 @@ const rocketNodeManager = new ethers.Contract(
     'function getNodeWithdrawalAddress(address) view returns (address)'
   ], provider)
 
-console.log(`Minipool Manager: ${await rocketMinipoolManager.getAddress()}`)
-console.log(`Node Manager: ${await rocketNodeManager.getAddress()}`)
+log(`Minipool Manager: ${await rocketMinipoolManager.getAddress()}`)
+log(`Node Manager: ${await rocketNodeManager.getAddress()}`)
 
 const minipoolAbi = [
   'function getNodeAddress() view returns (address)'
@@ -128,7 +134,7 @@ const isNumber = /^[1-9]\d*$/
 // TODO: cache entities, including selectedness (per socketid?)
 
 async function lookupMinipool({minipoolAddress, nodeInfo, validatorInfo}) {
-  console.log(`Lookup minipool ${minipoolAddress}`)
+  log(`Lookup minipool ${minipoolAddress}`)
   const minipool = new ethers.Contract(minipoolAddress, minipoolAbi, provider)
   async function getNodeInfo() {
     const nodeAddress = await minipool.getNodeAddress()
@@ -161,12 +167,12 @@ async function lookupEntity(entity) {
   const values = []
   async function tryProcessNode(s) {
     if (await rocketNodeManager.getNodeExists(s)) {
-      console.log(`${s} exists as node`)
+      log(`${s} exists as node`)
       const nodeAddress = s
       const nodeEnsName = await provider.lookupAddress(nodeAddress)
       nodeInfo = {nodeAddress, nodeEnsName}
       const n = await rocketMinipoolManager.getNodeMinipoolCount(nodeAddress)
-      console.log(`${s} has ${n} minipools`)
+      log(`${s} has ${n} minipools`)
       const minipoolAddresses = await multicall(
         Array(parseInt(n)).fill().map((_, i) => ({
           contract: rocketMinipoolManager,
@@ -192,9 +198,9 @@ async function lookupEntity(entity) {
       break
     }
     if (ethers.isAddress(s)) {
-      console.log(`Parsed ${s} as an address`)
+      log(`Parsed ${s} as an address`)
       if (await rocketMinipoolManager.getMinipoolExists(s)) {
-        console.log(`${s} exists as minipool`)
+        log(`${s} exists as minipool`)
         minipoolAddress = s
         continue
       }
@@ -211,7 +217,7 @@ async function lookupEntity(entity) {
     if (ethers.isHexString(s, 48)) {
       minipoolAddress = await rocketMinipoolManager.getMinipoolByPubkey(s)
       if (minipoolAddress != nullAddress) {
-        console.log(`${s} exists as minipool pubkey`)
+        log(`${s} exists as minipool pubkey`)
         const pubkey = s
         const validatorIndex = validatorInfo?.validatorIndex || await getIndexFromPubkey(pubkey)
         if (0 <= validatorIndex) {
@@ -224,7 +230,7 @@ async function lookupEntity(entity) {
       }
     }
     if (isNumber.test(s)) {
-      console.log(`${s} is a number`)
+      log(`${s} is a number`)
       const pubkey = await getPubkeyFromIndex(s)
       if (pubkey) {
         validatorInfo = {validatorIndex: s}
@@ -232,11 +238,11 @@ async function lookupEntity(entity) {
         continue
       }
     }
-    console.log(`Trying ${s} as ENS`)
+    log(`Trying ${s} as ENS`)
     try { s = await provider.resolveName(s) }
     catch { s = null }
     if (!s) break
-    console.log(`resolved as ${s}: rerunning`)
+    log(`resolved as ${s}: rerunning`)
   }
   log(`Returning ${values.length} values for ${entity}`)
   return {entity, values}
@@ -244,10 +250,10 @@ async function lookupEntity(entity) {
 
 io.on('connection', socket => {
 
-  console.log(`connection: ${socket.id}`)
+  log(`connection: ${socket.id}`)
 
   socket.on('entities', entities => {
-    console.log(`Got entities from ${socket.id}: ${entities}`)
+    log(`Got entities from ${socket.id}: ${entities}`)
     Promise.all(
       entities
       .split(/\s|,/)
@@ -261,7 +267,7 @@ io.on('connection', socket => {
   })
 
   socket.on('disconnect', () => {
-    console.log(`disconnection: ${socket.id}`)
+    log(`disconnection: ${socket.id}`)
   })
 
 })

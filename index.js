@@ -1,7 +1,6 @@
 const socket = io()
 const frag = document.createDocumentFragment()
-const html = document.querySelector('html')
-const body = html.appendChild(document.createElement('body'))
+const body = document.querySelector('body')
 
 const titleHeading = document.createElement('h1')
 const entryHeading = document.createElement('h2')

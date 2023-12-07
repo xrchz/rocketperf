@@ -16,3 +16,7 @@ td.validator {
 td.selected {
   text-align: center;
 }
+div#slotSelection {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}

@@ -7,21 +7,32 @@ const titleHeading = document.createElement('h1')
 const entryHeading = document.createElement('h2')
 const selectedHeading = document.createElement('h2')
 const perfHeading = document.createElement('h2')
+const slotsHeading = document.createElement('h3')
+const summaryHeading = document.createElement('h3')
+const detailsHeading = document.createElement('h3')
 
 titleHeading.innerText = '🚀 RocketPerv 📉'
 entryHeading.innerText = 'Enter Validators'
 selectedHeading.innerText = 'Selected Validators'
 perfHeading.innerText = 'Performance of Selected Validators'
+slotsHeading.innerText = 'Time Range'
+summaryHeading.innerText = 'Summary'
+detailsHeading.innerText = 'Details'
 
 const entityEntryBox = document.createElement('textarea')
-entityEntryBox.placeholder = 'Node, minipool, or withdrawal addresses/ENS names, and/or validator pubkeys/indices, separated by spaces or commas'
+entityEntryBox.placeholder = 'Node, minipool, or withdrawal addresses/ENS names,'.concat(
+  ' and/or validator pubkeys/indices, separated by spaces and/or commas.',
+  ' Put a * after a withdrawal address to include nodes it was ever previously for.'
+)
+entityEntryBox.title = entityEntryBox.placeholder
 entityEntryBox.cols = 96
 entityEntryBox.rows = 6
 entityEntryBox.autocomplete = 'on'
 
 entityEntryBox.addEventListener('change',
-  () => socket.emit('entities', entityEntryBox.value)
-  ,{passive: true})
+  () => socket.emit('entities', entityEntryBox.value),
+  {passive: true}
+)
 
 const minipoolsList = document.createElement('table')
 const headings = ['Minipool', 'Node', 'Validator', 'Include']
@@ -33,6 +44,81 @@ minipoolsList.appendChild(document.createElement('tr'))
       return th
     })
   )
+
+const slotSelectionDiv = document.createElement('div')
+const fromDatetimeLabel = document.createElement('label')
+const fromDatetime = document.createElement('input')
+const toDatetimeLabel = document.createElement('label')
+const toDatetime = document.createElement('input')
+// const timezoneLabel = document.createElement('label') TODO: add this later?
+const fromSlotLabel = document.createElement('label')
+const fromSlot = document.createElement('input')
+const toSlotLabel = document.createElement('label')
+const toSlot = document.createElement('input')
+const slotSelectors = new Map()
+slotSelectors.set('fromDatetime', fromDatetime)
+slotSelectors.set('toDatetime', toDatetime)
+slotSelectors.set('fromSlot', fromSlot)
+slotSelectors.set('toSlot', toSlot)
+
+slotSelectionDiv.id = 'slotSelection'
+
+fromDatetime.type = 'datetime-local'
+toDatetime.type = 'datetime-local'
+fromSlot.type = 'number'
+toSlot.type = 'number'
+fromDatetime.dataset.dir = 'from'
+fromSlot.dataset.dir = 'from'
+toDatetime.dataset.dir = 'to'
+toSlot.dataset.dir = 'to'
+fromSlot.min = 0
+toSlot.min = 0
+fromSlotLabel.append(
+  document.createTextNode('From slot: '),
+  fromSlot
+)
+toSlotLabel.append(
+  document.createTextNode('To slot: '),
+  toSlot
+)
+fromDatetimeLabel.append(
+  document.createTextNode('From time: '),
+  fromDatetime
+)
+toDatetimeLabel.append(
+  document.createTextNode('To time: '),
+  toDatetime
+)
+
+const slotSelectionHandler = (e) =>
+  socket.emit('setSlot',
+    {dir: e.target.dataset.dir,
+     type: e.target.type,
+     value: e.target.value}
+  )
+
+slotSelectors.forEach(e =>
+  e.addEventListener('change', slotSelectionHandler, {passive: true})
+)
+
+socket.on('setSlot', (key, value) =>
+  slotSelectors.get(key).value = value
+)
+
+slotSelectionDiv.append(
+  fromDatetimeLabel, toDatetimeLabel,
+  fromSlotLabel, toSlotLabel
+)
+
+const summaryDiv = document.createElement('div')
+// TODO: add total duties assigned, completed, failed
+// TODO: also breakdown by type of duty
+// TODO: also add total rewards and penalties?
+
+const detailsDiv = document.createElement('div')
+// TODO: add square per subperiod coloured according to duty performance, laid out calendar-like
+// TODO: add summary per subperiod as tooltip/title per square
+// TODO: add selector for subperiod size (usually 1 day)
 
 socket.on('minipools', minipools => {
   for (const {minipoolAddress, minipoolEnsName, nodeAddress, nodeEnsName, validatorIndex, selected} of minipools) {
@@ -73,5 +159,11 @@ body.append(
   entityEntryBox,
   selectedHeading,
   minipoolsList,
-  perfHeading
+  perfHeading,
+  slotsHeading,
+  slotSelectionDiv,
+  summaryHeading,
+  summaryDiv,
+  detailsHeading,
+  detailsDiv
 )

@@ -34,6 +34,9 @@ entityEntryBox.addEventListener('change',
   {passive: true}
 )
 
+const entityFailures = document.createElement('ul')
+entityFailures.id = 'entityFailures'
+
 const minipoolsList = document.createElement('table')
 const headings = ['Minipool', 'Node', 'Validator', 'Include']
 minipoolsList.appendChild(document.createElement('tr'))
@@ -153,10 +156,22 @@ socket.on('minipools', minipools => {
   minipoolsList.appendChild(frag)
 })
 
+socket.on('unknownEntities', entities => {
+  console.log(`Got ${entities.length} unknownEntities`)
+  entityFailures.replaceChildren(
+    ...entities.map(s => {
+      const li = document.createElement('li')
+      li.innerText = s
+      return li
+    })
+  )
+})
+
 body.append(
   titleHeading,
   entryHeading,
   entityEntryBox,
+  entityFailures,
   selectedHeading,
   minipoolsList,
   perfHeading,

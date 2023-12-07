@@ -20,3 +20,16 @@ div#slotSelection {
   display: grid;
   grid-template-columns: 1fr 1fr;
 }
+ul#entityFailures {
+  list-style-type: none;
+}
+ul#entityFailures:not(:empty)::before {
+  content: 'No RP validators found for:';
+}
+ul#entityFailures > li {
+  display: inline-block;
+  margin-left: 0.25em;
+}
+ul#entityFailures > li:not(:last-child)::after {
+  content: ',';
+}

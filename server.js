@@ -158,7 +158,7 @@ async function lookupEntity(entity) {
   let nodeInfo
   let validatorInfo
   let starred = false
-  const items = []
+  const values = []
   async function tryProcessNode(s) {
     if (await rocketNodeManager.getNodeExists(s)) {
       console.log(`${s} exists as node`)
@@ -173,7 +173,7 @@ async function lookupEntity(entity) {
           fn: 'getNodeMinipoolAt',
           args: [nodeAddress, i]
         })))
-      items.push(...await Promise.all(
+      values.push(...await Promise.all(
         minipoolAddresses.map(minipoolAddress =>
           lookupMinipool({minipoolAddress, nodeInfo})))
       )
@@ -188,7 +188,7 @@ async function lookupEntity(entity) {
     if (minipoolAddress) {
       await lookupMinipool(
         {minipoolAddress, nodeInfo, validatorInfo}
-      ).then(i => items.push(i))
+      ).then(i => values.push(i))
       break
     }
     if (ethers.isAddress(s)) {
@@ -238,9 +238,8 @@ async function lookupEntity(entity) {
     if (!s) break
     console.log(`resolved as ${s}: rerunning`)
   }
-  console.log(`Returning ${items.length} items for ${entity}`)
-  return items
-  // TODO: inform about entities that failed to resolve
+  log(`Returning ${values.length} values for ${entity}`)
+  return {entity, values}
 }
 
 io.on('connection', socket => {
@@ -254,8 +253,10 @@ io.on('connection', socket => {
       .split(/\s|,/)
       .filter(s => s.length)
       .map(lookupEntity)
-    ).then(minipools =>
-      socket.emit('minipools', minipools.flat())
+    ).then(minipools => {
+        socket.emit('minipools', minipools.flatMap(x => x.values))
+        socket.emit('unknownEntities', minipools.flatMap(x => x.values.length ? [] : [x.entity]))
+      }
     )
   })
 

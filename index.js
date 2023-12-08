@@ -104,9 +104,21 @@ slotSelectors.forEach(e =>
   e.addEventListener('change', slotSelectionHandler, {passive: true})
 )
 
-socket.on('setSlot', (key, value) =>
+function ensureValidRange() {
+  const fromOld = fromSlot.value, toOld = toSlot.value
+  if (!(parseInt(fromSlot.value) <= parseInt(toSlot.value))) {
+    if (!fromSlot.value) { toSlot.value = fromSlot.value }
+    toSlot.value = fromSlot.value
+  }
+  if (fromOld != fromSlot.value && !isNaN(parseInt(fromSlot.value))) fromSlot.dispatchEvent(new Event('change'))
+  if (toOld != toSlot.value && !isNaN(parseInt(toSlot.value))) toSlot.dispatchEvent(new Event('change'))
+}
+
+socket.on('setSlot', (key, value) => {
   slotSelectors.get(key).value = value
-)
+  if (key.endsWith('Slot')) ensureValidRange()
+  // TODO: update performance info
+})
 
 slotSelectionDiv.append(
   fromDatetimeLabel, toDatetimeLabel,

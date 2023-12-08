@@ -157,14 +157,14 @@ async function lookupMinipool({minipoolAddress, nodeInfo, withdrawalInfo, valida
     const validatorIndex = await getIndexFromPubkey(pubkey).then(i => (i < 0 ? 'none' : i.toString()))
     return {pubkey, validatorIndex}
   }
-  async function getWithdrawalInfo({nodeAddress}) {
+  async function getWithdrawalInfo(nodeAddress) {
     const withdrawalAddress = await rocketNodeManager.getNodeWithdrawalAddress(nodeAddress)
     const withdrawalEnsName = await provider.lookupAddress(withdrawalAddress)
     return {withdrawalAddress, withdrawalEnsName}
   }
   const {nodeAddress, nodeEnsName} = nodeInfo || await getNodeInfo()
   const {pubkey, validatorIndex} = validatorInfo || await getValidatorInfo()
-  const {withdrawalAddress, withdrawalEnsName} = withdrawalInfo || await getWithdrawalInfo()
+  const {withdrawalAddress, withdrawalEnsName} = withdrawalInfo || await getWithdrawalInfo(nodeAddress)
   return {
     minipoolAddress,
     minipoolEnsName: await provider.lookupAddress(minipoolAddress),

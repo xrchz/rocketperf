@@ -143,7 +143,8 @@ const isNumber = /^[1-9]\d*$/
 
 // TODO: cache entities, including selectedness (per socketid?)
 
-async function lookupMinipool({minipoolAddress, nodeInfo, validatorInfo}) {
+// TODO: memoise? -- modulo withdrawalAddress and ens names (or store block)
+async function lookupMinipool({minipoolAddress, nodeInfo, withdrawalInfo, validatorInfo}) {
   log(`Lookup minipool ${minipoolAddress}`)
   const minipool = new ethers.Contract(minipoolAddress, minipoolAbi, provider)
   async function getNodeInfo() {
@@ -156,22 +157,30 @@ async function lookupMinipool({minipoolAddress, nodeInfo, validatorInfo}) {
     const validatorIndex = await getIndexFromPubkey(pubkey).then(i => (i < 0 ? 'none' : i.toString()))
     return {pubkey, validatorIndex}
   }
+  async function getWithdrawalInfo({nodeAddress}) {
+    const withdrawalAddress = await rocketNodeManager.getNodeWithdrawalAddress(nodeAddress)
+    const withdrawalEnsName = await provider.lookupAddress(withdrawalAddress)
+    return {withdrawalAddress, withdrawalEnsName}
+  }
   const {nodeAddress, nodeEnsName} = nodeInfo || await getNodeInfo()
   const {pubkey, validatorIndex} = validatorInfo || await getValidatorInfo()
+  const {withdrawalAddress, withdrawalEnsName} = withdrawalInfo || await getWithdrawalInfo()
   return {
     minipoolAddress,
     minipoolEnsName: await provider.lookupAddress(minipoolAddress),
     nodeAddress,
     nodeEnsName,
+    withdrawalAddress,
+    withdrawalEnsName,
     validatorIndex,
     selected: true
   }
 }
 
-// TODO: memoise
+// TODO: memoise? -- modulo withdrawalAddress and ens names (or store block)
 async function lookupEntity(entity) {
   let s = entity
-  let minipoolAddress, nodeInfo, validatorInfo, starred = false
+  let minipoolAddress, nodeInfo, withdrawalInfo, validatorInfo, starred = false
   const values = []
   async function tryProcessNode(s) {
     if (await rocketNodeManager.getNodeExists(s)) {
@@ -179,6 +188,9 @@ async function lookupEntity(entity) {
       const nodeAddress = s
       const nodeEnsName = await provider.lookupAddress(nodeAddress)
       nodeInfo = {nodeAddress, nodeEnsName}
+      const withdrawalAddress = await rocketNodeManager.getNodeWithdrawalAddress(nodeAddress)
+      const withdrawalEnsName = await provider.lookupAddress(withdrawalAddress)
+      withdrawalInfo = {withdrawalAddress, withdrawalEnsName}
       const n = await rocketMinipoolManager.getNodeMinipoolCount(nodeAddress)
       log(`${s} has ${n} minipools`)
       const minipoolAddresses = await multicall(
@@ -189,9 +201,10 @@ async function lookupEntity(entity) {
         })))
       values.push(...await Promise.all(
         minipoolAddresses.map(minipoolAddress =>
-          lookupMinipool({minipoolAddress, nodeInfo})))
+          lookupMinipool({minipoolAddress, nodeInfo, withdrawalInfo})))
       )
       nodeInfo = null
+      withdrawalInfo = null
     }
   }
   while (true) {

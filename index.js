@@ -37,11 +37,12 @@ const entityFailures = document.createElement('ul')
 entityFailures.id = 'entityFailures'
 
 const minipoolsList = document.createElement('table')
-const headings = ['Minipool', 'Node', 'Validator', 'Include']
+const headings = ['Minipool', 'Node', 'Withdrawal', 'Validator', 'Include']
 minipoolsList.appendChild(document.createElement('tr'))
   .append(
     ...headings.map(h => {
       const th = document.createElement('th')
+      th.id = `th-${h.toLowerCase()}`
       th.innerText = h
       return th
     })
@@ -123,7 +124,7 @@ const detailsDiv = document.createElement('div')
 // TODO: add selector for subperiod size (usually 1 day)
 
 socket.on('minipools', minipools => {
-  for (const {minipoolAddress, minipoolEnsName, nodeAddress, nodeEnsName, validatorIndex, selected} of minipools) {
+  for (const {minipoolAddress, minipoolEnsName, nodeAddress, nodeEnsName, withdrawalAddress, withdrawalEnsName, validatorIndex, selected} of minipools) {
     const tr = frag.appendChild(document.createElement('tr'))
     const mpA = document.createElement('a')
     mpA.href = `https://rocketscan.io/minipool/${minipoolAddress}`
@@ -131,6 +132,9 @@ socket.on('minipools', minipools => {
     const nodeA = document.createElement('a')
     nodeA.href = `https://rocketscan.io/node/${nodeAddress}`
     nodeA.innerText = nodeEnsName || nodeAddress
+    const wA = document.createElement('a')
+    wA.href = `https://rocketscan.io/address/${withdrawalAddress}`
+    wA.innerText = withdrawalEnsName || withdrawalAddress
     const valA = document.createElement('a')
     valA.href = `https://beaconcha.in/validator/${validatorIndex}`
     valA.innerText = validatorIndex
@@ -138,9 +142,10 @@ socket.on('minipools', minipools => {
     sel.type = 'checkbox'
     sel.checked = selected
     tr.append(
-      ...[mpA, nodeA, valA, sel].map(a => {
+      ...[mpA, nodeA, wA, valA, sel].map((a, i) => {
         const td = document.createElement('td')
         td.appendChild(a)
+        td.headers = `th-${headings[i].toLowerCase()}`
         return td
       })
     )
@@ -148,6 +153,8 @@ socket.on('minipools', minipools => {
     if (!minipoolEnsName) mpA.parentElement.classList.add('address')
     nodeA.parentElement.classList.add('node')
     if (!nodeEnsName) nodeA.parentElement.classList.add('address')
+    wA.parentElement.classList.add('withdrawal')
+    if (!withdrawalEnsName) wA.parentElement.classList.add('address')
     valA.parentElement.classList.add('validator')
     sel.parentElement.classList.add('selected')
   }

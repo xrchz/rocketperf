@@ -166,6 +166,12 @@ socket.on('unknownEntities', entities => {
   )
 })
 
+const footerDiv = document.createElement('div')
+const codeLink = document.createElement('a')
+codeLink.href = 'https://github.com/xrchz/rocketperf'
+codeLink.innerText = 'site code'
+footerDiv.append(codeLink)
+
 body.append(
   titleHeading,
   entryHeading,
@@ -179,5 +185,6 @@ body.append(
   summaryHeading,
   summaryDiv,
   detailsHeading,
-  detailsDiv
+  detailsDiv,
+  footerDiv
 )

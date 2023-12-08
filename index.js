@@ -2,6 +2,8 @@ const socket = io()
 const frag = document.createDocumentFragment()
 const body = document.querySelector('body')
 
+const toId = (s) => s.replace(/\s/,'-')
+
 const titleHeading = document.createElement('h1')
 const entryHeading = document.createElement('h2')
 const selectedHeading = document.createElement('h2')
@@ -14,7 +16,7 @@ titleHeading.innerText = '🚀 RocketPerv 📉'
 entryHeading.innerText = 'Enter Validators'
 selectedHeading.innerText = 'Selected Validators'
 perfHeading.innerText = 'Performance of Selected Validators'
-slotsHeading.innerText = 'Time Range'
+slotsHeading.innerText = 'Time Range (UTC only for now)'
 summaryHeading.innerText = 'Summary'
 detailsHeading.innerText = 'Details'
 
@@ -37,6 +39,7 @@ const entityFailures = document.createElement('ul')
 entityFailures.id = 'entityFailures'
 
 const minipoolsList = document.createElement('table')
+minipoolsList.classList.add('hidden')
 const headings = ['Minipool', 'Node', 'Withdrawal', 'Validator', 'Include']
 minipoolsList.appendChild(document.createElement('tr'))
   .append(
@@ -65,6 +68,8 @@ slotSelectors.set('fromSlot', fromSlot)
 slotSelectors.set('toSlot', toSlot)
 
 slotSelectionDiv.id = 'slotSelection'
+
+// TODO: add free-form text selectors for times too
 
 fromDatetime.type = 'datetime-local'
 toDatetime.type = 'datetime-local'
@@ -125,10 +130,51 @@ slotSelectionDiv.append(
   fromSlotLabel, toSlotLabel
 )
 
-const summaryDiv = document.createElement('div')
-// TODO: add total duties assigned, completed, failed
-// TODO: also breakdown by type of duty
-// TODO: also add total rewards and penalties?
+// TODO: add shortcut buttons for time ranges: all, today, +/- n days
+
+const summaryHeadings = ['Assigned', 'Missed', 'Success Rate', 'Net Reward']
+const allSummaryTable = document.createElement('table')
+const summaryTable = document.createElement('table')
+summaryTable.classList.add('hidden')
+allSummaryTable.classList.add('hidden')
+const dutyHeadings = ['Attestations', 'Proposals', 'Syncs']
+allSummaryTable.appendChild(document.createElement('tr'))
+  .append(...summaryHeadings.map(h => {
+    const th = document.createElement('th')
+    th.innerText = h
+    th.id = `th-${toId(h.toLowerCase())}`
+    return th
+  }))
+allSummaryTable.appendChild(document.createElement('tr'))
+  .append(...Array.from(allSummaryTable.firstElementChild.children).map(h => {
+    const td = document.createElement('td')
+    td.headers = h.id
+    td.id = `td-${h.id.slice(3)}`
+    return td
+  }))
+
+summaryTable.appendChild(document.createElement('tr'))
+  .append(...dutyHeadings.map(h => {
+    const th = document.createElement('th')
+    th.innerText = h
+    th.setAttribute('colspan', '4')
+    th.id = `th-${toId(h.toLowerCase())}`
+    return th
+  }))
+summaryTable.appendChild(document.createElement('tr'))
+  .append(...Array.from(summaryTable.firstElementChild.children).flatMap(h =>
+    summaryHeadings.map(h2 => {
+      const th = document.createElement('th')
+      th.innerText = h2
+      th.headers = h.id
+      th.id = `th-${h.id.slice(3)}-${toId(h2.toLowerCase())}`
+      return th
+    })
+  ))
+
+// TODO: hide tables (headings) when empty
+// TODO: fill tables
+// TODO: add attestation accuracy info
 
 const detailsDiv = document.createElement('div')
 // TODO: add square per subperiod coloured according to duty performance, laid out calendar-like
@@ -153,6 +199,7 @@ socket.on('minipools', minipools => {
     const sel = document.createElement('input')
     sel.type = 'checkbox'
     sel.checked = selected
+    // TODO: on selection change, update performance info
     tr.append(
       ...[mpA, nodeA, wA, valA, sel].map((a, i) => {
         const td = document.createElement('td')
@@ -172,6 +219,11 @@ socket.on('minipools', minipools => {
   }
   minipoolsList.replaceChildren(minipoolsList.firstElementChild)
   minipoolsList.appendChild(frag)
+  if (minipools.length) {
+    minipoolsList.classList.remove('hidden')
+    // TODO: update performance info
+  }
+  else minipoolsList.classList.add('hidden')
 })
 
 socket.on('unknownEntities', entities => {
@@ -202,7 +254,8 @@ body.append(
   slotsHeading,
   slotSelectionDiv,
   summaryHeading,
-  summaryDiv,
+  allSummaryTable,
+  summaryTable,
   detailsHeading,
   detailsDiv,
   footerDiv

@@ -168,6 +168,7 @@ async function lookupMinipool({minipoolAddress, nodeInfo, validatorInfo}) {
   }
 }
 
+// TODO: memoise
 async function lookupEntity(entity) {
   let s = entity
   let minipoolAddress, nodeInfo, validatorInfo, starred = false
@@ -273,7 +274,14 @@ io.on('connection', socket => {
       .filter(s => s.length)
       .map(lookupEntity)
     ).then(minipools => {
-        socket.emit('minipools', minipools.flatMap(x => x.values))
+        const uniqueMinipools = []
+        const addresses = new Set()
+        minipools.flatMap(x => x.values).forEach(x => {
+          if (!addresses.has(x.minipoolAddress))
+            uniqueMinipools.push(x)
+          addresses.add(x.minipoolAddress)
+        })
+        socket.emit('minipools', uniqueMinipools)
         socket.emit('unknownEntities', minipools.flatMap(x => x.values.length ? [] : [x.entity]))
       }
     )

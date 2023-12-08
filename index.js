@@ -70,6 +70,7 @@ slotSelectors.set('toSlot', toSlot)
 slotSelectionDiv.id = 'slotSelection'
 
 // TODO: add free-form text selectors for times too
+// TODO: use input that allows seconds (datetime-local actually does not)
 
 fromDatetime.type = 'datetime-local'
 toDatetime.type = 'datetime-local'
@@ -125,7 +126,43 @@ socket.on('setSlot', (key, value) => {
   // TODO: update performance info
 })
 
+const rangeButtons = document.createElement('div')
+rangeButtons.id = 'fullRangeButtons'
+rangeButtons.classList.add('rangeButtons')
+
+const makeButton = (v) => {
+  const b = document.createElement('input')
+  b.type = 'button'
+  b.value = v
+  b.addEventListener('click', () =>
+    socket.emit('setSlotRange', v.split(/\s/).at(-1).toLowerCase()))
+  return b
+}
+
+const allTimeButton = makeButton('All Time')
+const lastYearButton = makeButton('This Year')
+const lastMonthButton = makeButton('This Month')
+const lastWeekButton = makeButton('This Week')
+const lastDayButton = makeButton('Today')
+const lastHourButton = makeButton('This Hour')
+
+rangeButtons.append(
+  allTimeButton,
+  lastYearButton,
+  lastMonthButton,
+  lastWeekButton,
+  lastDayButton,
+  lastHourButton
+)
+
+const fromButtons = document.createElement('div')
+const toButtons = document.createElement('div')
+fromButtons.classList.add('dirRangeButtons')
+toButtons.classList.add('dirRangeButtons')
+
 slotSelectionDiv.append(
+  rangeButtons,
+  fromButtons, toButtons,
   fromDatetimeLabel, toDatetimeLabel,
   fromSlotLabel, toSlotLabel
 )

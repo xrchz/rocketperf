@@ -36,6 +36,13 @@ ul#entityFailures > li {
 ul#entityFailures > li:not(:last-child)::after {
   content: ',';
 }
+div#fullRangeButtons {
+  grid-column: 1 / span 2;
+}
+div.rangeButtons {
+  display: flex;
+  justify-content: space-around;
+}
 .hidden {
   display: none;
 }

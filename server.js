@@ -275,6 +275,14 @@ const dateToTimestring = (d) => {
   return s
 }
 
+function setSlot(socket, dir, slot) {
+  const keySlot = `${dir}Slot`
+  const keyTime = `${dir}Datetime`
+  const time = dateToTimestring(new Date(slotToTime(slot) * 1000))
+  socket.emit('setSlot', keySlot, slot)
+  socket.emit('setSlot', keyTime, time)
+}
+
 io.on('connection', socket => {
 
   log(`connection: ${socket.id}`)
@@ -301,24 +309,53 @@ io.on('connection', socket => {
   })
 
   socket.on('setSlot', ({dir, type, value}) => {
-    const keySlot = `${dir}Slot`
-    const keyTime = `${dir}Datetime`
     const currentTimeBig = BigInt(Date.now()) / 1000n
     const currentSlot = timeToSlot(currentTimeBig)
-    let slot, time
+    let slot
     if (type === 'number') {
       slot = parseInt(value) || (dir === 'to' ? currentSlot : 0)
     }
     else {
-      time = (new Date(value)).getTime()
+      let time = (new Date(value)).getTime()
       time = time ? BigInt(time) / 1000n :
                     dir === 'to' ? currentTimeBig : BigInt(slotToTime(0))
       slot = timeToSlot(time)
     }
     slot = Math.max(0, Math.min(slot, currentSlot))
-    time = dateToTimestring(new Date(slotToTime(slot) * 1000))
-    socket.emit('setSlot', keySlot, slot)
-    socket.emit('setSlot', keyTime, time)
+    setSlot(socket, dir, slot)
+  })
+
+  socket.on('setSlotRange', period => {
+    const date = new Date()
+    let fromSlot = 0
+    const toSlot = timeToSlot(BigInt(date.getTime()) / 1000n)
+    setSlot(socket, 'to', toSlot)
+    setSlot(socket, 'from', fromSlot)
+    if (period === 'year') {
+      date.setMonth(0, 1)
+      date.setHours(0, 0, 0, 0)
+      fromSlot = timeToSlot(BigInt(date.getTime()) / 1000n)
+    }
+    else if (period === 'month') {
+      date.setDate(1)
+      date.setHours(0, 0, 0, 0)
+      fromSlot = timeToSlot(BigInt(date.getTime()) / 1000n)
+    }
+    else if (period === 'week') {
+      const day = date.getDay()
+      date.setDate(date.getDate() - day)
+      date.setHours(0, 0, 0, 0)
+      fromSlot = timeToSlot(BigInt(date.getTime()) / 1000n)
+    }
+    else if (period === 'today') {
+      date.setHours(0, 0, 0, 0)
+      fromSlot = timeToSlot(BigInt(date.getTime()) / 1000n)
+    }
+    else if (period === 'hour') {
+      date.setMinutes(0, 0, 0)
+      fromSlot = timeToSlot(BigInt(date.getTime()) / 1000n)
+    }
+    if (fromSlot) setSlot(socket, 'from', fromSlot)
   })
 
   socket.on('disconnect', () => {

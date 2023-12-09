@@ -52,18 +52,25 @@ minipoolsList.appendChild(document.createElement('tr'))
   )
 
 const slotSelectionDiv = document.createElement('div')
-const fromDatetimeLabel = document.createElement('label')
-const fromDatetime = document.createElement('input')
-const toDatetimeLabel = document.createElement('label')
-const toDatetime = document.createElement('input')
+const fromDateLabel = document.createElement('label')
+const fromDate = document.createElement('input')
+const fromTimeLabel = document.createElement('label')
+const fromTime = document.createElement('input')
+const toDateLabel = document.createElement('label')
+const toDate = document.createElement('input')
+const toTimeLabel = document.createElement('label')
+const toTime = document.createElement('input')
 // const timezoneLabel = document.createElement('label') TODO: add this later?
 const fromSlotLabel = document.createElement('label')
 const fromSlot = document.createElement('input')
 const toSlotLabel = document.createElement('label')
 const toSlot = document.createElement('input')
+;[fromSlotLabel, toSlotLabel].forEach(e => e.classList.add('slotLabel'))
 const slotSelectors = new Map()
-slotSelectors.set('fromDatetime', fromDatetime)
-slotSelectors.set('toDatetime', toDatetime)
+slotSelectors.set('fromDate', fromDate)
+slotSelectors.set('fromTime', fromTime)
+slotSelectors.set('toDate', toDate)
+slotSelectors.set('toTime', toTime)
 slotSelectors.set('fromSlot', fromSlot)
 slotSelectors.set('toSlot', toSlot)
 
@@ -72,16 +79,17 @@ slotSelectionDiv.id = 'slotSelection'
 // TODO: add free-form text selectors for times too
 // TODO: use input that allows seconds (datetime-local actually does not)
 
-fromDatetime.type = 'datetime-local'
-toDatetime.type = 'datetime-local'
-fromSlot.type = 'number'
-toSlot.type = 'number'
-fromDatetime.dataset.dir = 'from'
-fromSlot.dataset.dir = 'from'
-toDatetime.dataset.dir = 'to'
-toSlot.dataset.dir = 'to'
-fromSlot.min = 0
-toSlot.min = 0
+;[fromDate, toDate].forEach(e => e.type = 'date')
+;[fromTime, toTime].forEach(e => {
+  e.type = 'time'
+  e.step = 1
+})
+;[fromSlot, toSlot].forEach(e => {
+  e.type = 'number'
+  e.min = 0
+})
+;[fromDate, fromTime, fromSlot].forEach(e => e.dataset.dir = 'from')
+;[toDate, toTime, toSlot].forEach(e => e.dataset.dir = 'to')
 fromSlotLabel.append(
   document.createTextNode('From slot: '),
   fromSlot
@@ -90,21 +98,27 @@ toSlotLabel.append(
   document.createTextNode('To slot: '),
   toSlot
 )
-fromDatetimeLabel.append(
-  document.createTextNode('From time: '),
-  fromDatetime
+fromDateLabel.append(
+  document.createTextNode('From date: '),
+  fromDate
 )
-toDatetimeLabel.append(
-  document.createTextNode('To time: '),
-  toDatetime
+fromTimeLabel.append(fromTime)
+toDateLabel.append(
+  document.createTextNode('To date: '),
+  toDate
 )
+toTimeLabel.append(toTime)
 
-const slotSelectionHandler = (e) =>
+const slotSelectionHandler = (e) => {
+  const dir = e.target.dataset.dir
+  const type = e.target.type
+  const otherType = type === 'time' ? 'Date' : type === 'date' ? 'Time' : null
   socket.emit('setSlot',
-    {dir: e.target.dataset.dir,
-     type: e.target.type,
-     value: e.target.value}
+    {dir, type, value: e.target.value,
+     other: otherType && slotSelectors.get(`${dir}${otherType}`).value
+    }
   )
+}
 
 slotSelectors.forEach(e =>
   e.addEventListener('change', slotSelectionHandler, {passive: true})
@@ -159,15 +173,19 @@ const fromButtons = document.createElement('div')
 const toButtons = document.createElement('div')
 fromButtons.classList.add('dirRangeButtons')
 toButtons.classList.add('dirRangeButtons')
+// TODO: add actions to these buttons
+
+const fromDateTime = document.createElement('div')
+const toDateTime = document.createElement('div')
+fromDateTime.append(fromDateLabel, fromTimeLabel)
+toDateTime.append(toDateLabel, toTimeLabel)
 
 slotSelectionDiv.append(
   rangeButtons,
   fromButtons, toButtons,
-  fromDatetimeLabel, toDatetimeLabel,
+  fromDateTime, toDateTime,
   fromSlotLabel, toSlotLabel
 )
-
-// TODO: add shortcut buttons for time ranges: all, today, +/- n days
 
 const summaryHeadings = ['Assigned', 'Missed', 'Success Rate', 'Net Reward']
 const allSummaryTable = document.createElement('table')

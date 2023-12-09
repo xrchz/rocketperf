@@ -37,7 +37,7 @@ ul#entityFailures > li:not(:last-child)::after {
   content: ',';
 }
 div#fullRangeButtons {
-  grid-column: 1 / span 2;
+  grid-column-end: span 2;
 }
 div.rangeButtons {
   display: flex;

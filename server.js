@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { open } from 'lmdb'
 
 const timestamp = () => Intl.DateTimeFormat(
-    'en-GB', {hour: 'numeric', minute: 'numeric', second: 'numeric'}
+    'en-GB', {dateStyle: 'medium', timeStyle: 'medium'}
   ).format(new Date())
 
 const log = s => console.log(`${timestamp()} ${s}`)

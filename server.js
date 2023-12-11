@@ -8,6 +8,7 @@ import { Server } from 'socket.io'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { open } from 'lmdb'
+import { timeSlotConvs } from './lib.js'
 
 const timestamp = () => Intl.DateTimeFormat(
     'en-GB', {dateStyle: 'medium', timeStyle: 'medium'}
@@ -52,15 +53,7 @@ server.listen(443)
 
 const provider = new ethers.JsonRpcProvider(process.env.RPC)
 const chainId = await provider.getNetwork().then(n => n.chainId)
-
-const secondsPerSlot = 12
-const slotsPerEpoch = 32
-const genesisTimes = {
-  1: 1606824023
-}
-const genesisTime = genesisTimes[chainId]
-const timeToSlot = (t) => Math.round((t - genesisTime) / secondsPerSlot)
-const slotToTime = (s) => genesisTime + s * secondsPerSlot
+const {timeToSlot, slotToTime} = timeSlotConvs(chainId)
 
 const beaconRpcUrl = process.env.BN
 

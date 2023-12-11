@@ -227,7 +227,6 @@ summaryTable.appendChild(document.createElement('tr'))
     })
   ))
 
-// TODO: hide tables (headings) when empty
 // TODO: fill tables
 // TODO: add attestation accuracy info
 

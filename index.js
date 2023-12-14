@@ -4,6 +4,19 @@ const body = document.querySelector('body')
 
 const toId = (s) => s.replace(/\s/,'-')
 
+function formatUnits(wei, decimals) {
+  const {val, neg} = wei < 0n ? {val: wei * -1n, neg: '-'} : {val: wei, neg: ''}
+  const padded = val.toString().padStart(decimals, '0')
+  const index = padded.length - decimals
+  const dotted = `${padded.slice(0, index)}.${padded.slice(index)}`
+  const trimLeft = dotted.replace(/^0*\./, '0.')
+  const trimRight = trimLeft.replace(/0*$/, '')
+  const trimDot = trimRight.replace(/\.$/, '')
+  return `${neg}${trimDot}`
+}
+const formatEther = wei => formatUnits(wei, 18)
+const formatGwei = wei => formatUnits(wei, 9)
+
 const titleHeading = document.createElement('h1')
 const entryHeading = document.createElement('h2')
 const selectedHeading = document.createElement('h2')
@@ -16,7 +29,7 @@ titleHeading.innerText = '🚀 RocketPerv 📉'
 entryHeading.innerText = 'Enter Validators'
 selectedHeading.innerText = 'Selected Validators'
 perfHeading.innerText = 'Performance of Selected Validators'
-slotsHeading.innerText = 'Time Range (UTC only for now)'
+slotsHeading.innerText = 'Time Range (UTC only for now) (till finalized slot)'
 summaryHeading.innerText = 'Summary'
 detailsHeading.innerText = 'Details'
 
@@ -76,8 +89,7 @@ slotSelectors.set('toSlot', toSlot)
 
 slotSelectionDiv.id = 'slotSelection'
 
-// TODO: add free-form text selectors for times too
-// TODO: use input that allows seconds (datetime-local actually does not)
+// TODO: add free-form text selectors for times too?
 
 ;[fromDate, toDate].forEach(e => e.type = 'date')
 ;[fromTime, toTime].forEach(e => {
@@ -231,12 +243,78 @@ summaryTable.appendChild(document.createElement('tr'))
 // TODO: add attestation accuracy info
 
 const detailsDiv = document.createElement('div')
-// TODO: add square per subperiod coloured according to duty performance, laid out calendar-like
-// TODO: add summary per subperiod as tooltip/title per square
-// TODO: add selector for subperiod size (usually 1 day)
+
+const compareNumbers = (a,b) => a - b
+const monthNames = ['January', 'February', 'March', 'April', 'March', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+const emptyDutyData = { duties: 0, missed: 0, reward: 0n }
+const emptyDay = {
+  attestations: {...emptyDutyData},
+  proposals: {...emptyDutyData},
+  syncs: {...emptyDutyData}
+}
+const addTotal = (t, d) => Object.keys(t).forEach(k => t[k] += d[k])
+
+socket.on('perfDetails', data => {
+  // <data> = { <year>: {<month>: {<day>: {attestations: <dutyData>, proposals: <dutyData>, syncs: <dutyData>}, ...}, ...}, ...}
+  // <dutyData> = { duties: <num>, missed: <num>, reward: <string(bigint)> }
+  const totals = {...emptyDay}
+  const addTotals = (day) => Object.entries().forEach((k, v) => addTotal(totals[k], v))
+  for (const year of Object.keys(data).toSorted(compareNumbers)) {
+    const yearDiv = frag.appendChild(document.createElement('div'))
+    yearDiv.classList.add('year')
+    yearDiv.appendChild(document.createElement('span')).innerText = year
+    const yearObj = data[year]
+    for (const month of Object.keys(yearObj).toSorted(compareNumbers)) {
+      const monthDiv = yearDiv.appendChild(document.createElement('div'))
+      monthDiv.classList.add('month')
+      monthDiv.appendChild(document.createElement('span')).innerText = monthNames[month].slice(0, 3)
+      const monthObj = yearObj[month]
+      for (const day of Object.keys(monthObj).toSorted(compareNumbers)) {
+        const dayObj = monthObj[day]
+        const dayDiv = monthDiv.appendChild(document.createElement('div'))
+        dayDiv.classList.add('day')
+        const {totalDuties, totalMissed} = Object.values(dayObj).reduce(
+          ({totalDuties, totalMissed}, {duties, missed}) =>
+          ({totalDuties: totalDuties + duties, totalMissed = totalMissed + missed}))
+        const performance = (totalDuties - totalMissed) / totalDuties
+        const performanceDecile = Math.round(performance * 10)
+        dayDiv.classList.add(`perf${performanceDecile}`)
+        Object.keys(dayObj).forEach(k => dayObj[k].reward = BigInt(dayObj[k].reward))
+        const dutyTitle = (key) =>
+          `${dayObj[key].duties - dayObj[key].missed}/${dayObj[key].duties}: ${formatGwei(dayObj[key].reward)} gwei`
+        dayDiv.title = `A: ${dutyTitle('attestations')}\nP: ${dutyTitle('proposals')}\nS: ${dutyTitle('syncs')}`
+        addTotals(dayObj)
+      }
+    }
+  }
+  detailsDiv.replaceChildren(frag)
+  // TODO: add totals to summary table
+})
+
+// TODO: add selector for subperiod sizes (instead of year/month/day)?
+
+const minipoolsInTable = () => Array.from(
+  minipoolsList.querySelectorAll('.minipool')
+).flatMap(a =>
+  a.parentElement.querySelector('input[type="checkbox"]').checked ?
+  [a.href.slice(-42)] : []
+)
+
+const updatePerformanceDetails = () =>
+  socket.emit('perfDetails',
+    parseInt(fromSlot.value),
+    parseInt(toSlot.value),
+    minipoolsInTable()
+  )
+
+// TODO: add copy button for addresses in minipoolsList, and copy for whole columns, and whole table?
 
 socket.on('minipools', minipools => {
-  for (const {minipoolAddress, minipoolEnsName, nodeAddress, nodeEnsName, withdrawalAddress, withdrawalEnsName, validatorIndex, selected} of minipools) {
+  for (const {minipoolAddress, minipoolEnsName,
+              nodeAddress, nodeEnsName,
+              withdrawalAddress, withdrawalEnsName,
+              validatorIndex, selected} of minipools) {
     const tr = frag.appendChild(document.createElement('tr'))
     const mpA = document.createElement('a')
     mpA.href = `https://rocketscan.io/minipool/${minipoolAddress}`

@@ -7,16 +7,7 @@ import https from 'node:https'
 import { Server } from 'socket.io'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { open } from 'lmdb'
-import { timeSlotConvs } from './lib.js'
-
-const timestamp = () => Intl.DateTimeFormat(
-    'en-GB', {dateStyle: 'medium', timeStyle: 'medium'}
-  ).format(new Date())
-
-const log = s => console.log(`${timestamp()} ${s}`)
-
-const db = open({path: 'db', encoder: {structuredClone: true}})
+import { db, log, provider, chainId, beaconRpcUrl, timeSlotConvs, getFinalizedSlot } from './lib.js'
 
 const app = express()
 
@@ -51,11 +42,7 @@ const server = https.createServer(httpsOptions, app)
 const io = new Server(server)
 server.listen(443)
 
-const provider = new ethers.JsonRpcProvider(process.env.RPC)
-const chainId = await provider.getNetwork().then(n => n.chainId)
 const {timeToSlot, slotToTime} = timeSlotConvs(chainId)
-
-const beaconRpcUrl = process.env.BN
 
 const nullAddress = '0x'.padEnd(42, '0')
 
@@ -299,10 +286,9 @@ io.on('connection', socket => {
     )
   })
 
-  socket.on('setSlot', ({dir, type, value, other}) => {
+  socket.on('setSlot', async ({dir, type, value, other}) => {
     // TODO: maybe need to compare against previous value, to assess the intention of the change better
-    const currentTime = Date.now() / 1000
-    const currentSlot = timeToSlot(currentTime)
+    const currentSlot = await getFinalizedSlot()
     let slot
     if (type === 'number') {
       slot = parseInt(value) || (dir === 'to' ? currentSlot : 0)
@@ -310,17 +296,17 @@ io.on('connection', socket => {
     else {
       const datestring = type === 'date' ? `${value}T${other}` : `${other}T${value}`
       let time = (new Date(datestring)).getTime()
-      time = time ? time / 1000 : dir === 'to' ? currentTime : slotToTime(0)
+      time = time ? time / 1000 : slotToTime(dir === 'to' ? currentSlot : 0)
       slot = timeToSlot(time)
     }
     slot = Math.max(0, Math.min(slot, currentSlot))
     setSlot(socket, dir, slot)
   })
 
-  socket.on('setSlotRange', period => {
+  socket.on('setSlotRange', async period => {
     const date = new Date()
     let fromSlot = 0
-    const toSlot = timeToSlot(date.getTime() / 1000)
+    const toSlot = await getFinalizedSlot()
     setSlot(socket, 'from', fromSlot)
     setSlot(socket, 'to', toSlot)
     if (period === 'year') {

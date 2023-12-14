@@ -1,12 +1,9 @@
 import 'dotenv/config'
 import { ethers } from 'ethers'
-import { open } from 'lmdb'
-import { timeSlotConvs, slotsPerEpoch } from './lib.js'
+import { db, provider, chainId, beaconRpcUrl,
+         timeSlotConvs, slotsPerEpoch, getFinalizedSlot
+       } from './lib.js'
 
-const db = open({path: 'db', encoder: {structuredClone: true}})
-const provider = new ethers.JsonRpcProvider(process.env.RPC)
-const beaconRpcUrl = process.env.BN
-const chainId = await provider.getNetwork().then(n => n.chainId)
 const {timeToSlot, slotToTime} = timeSlotConvs(chainId)
 
 const MAX_QUERY_RANGE = 1000
@@ -45,10 +42,7 @@ const rocketStorageGenesisBlockByChain = {
 const rocketStorageGenesisBlock = rocketStorageGenesisBlockByChain[chainId]
 
 const finalizedBlockNumber = await provider.getBlock('finalized').then(b => b.number)
-const finalizedSlot = await fetch(
-  new URL('/eth/v1/beacon/blinded_blocks/finalized', beaconRpcUrl)
-).then(res => res.json().then(j => j.data.message.slot))
-// TODO: only allow up to finalizedSlot in frontend
+const finalizedSlot = await getFinalizedSlot()
 
 let withdrawalAddressBlock = db.get(`${chainId}/withdrawalAddressBlock`)
 if (!withdrawalAddressBlock) withdrawalAddressBlock = rocketStorageGenesisBlock

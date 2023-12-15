@@ -26,6 +26,8 @@ export const timeSlotConvs = (chainId) => {
   }
 }
 
+export const epochOfSlot = (slot) => Math.floor(slot / slotsPerEpoch)
+
 export const getFinalizedSlot = () =>
   fetch(
     new URL('/eth/v1/beacon/blinded_blocks/finalized', beaconRpcUrl)

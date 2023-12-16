@@ -331,6 +331,41 @@ io.on('connection', socket => {
     if (fromSlot) setSlot(socket, 'from', fromSlot)
   })
 
+  socket.on('perfDetails', async (fromSlot, toSlot, minipoolAddresses) => {
+    // TODO: check slots are a valid range, i.e. in [0, finalizedSlot]
+    const resultsBySlot = Array(toSlot - fromSlot).fill().map(() => {})
+    for (const minipoolAddress of minipoolAddresses) {
+      const pubkey = await rocketMinipoolManager.getMinipoolPubkey(minipoolAddress)
+      const validatorIndex = await getIndexFromPubkey(pubkey)
+      const nextSlot = db.get(`${chainId}/validator/${validatorIndex}/nextSlot`)
+      if (typeof(nextSlot) != 'number' || nextSlot < toSlot) {
+        console.warn(`Failed to include perfDetails for ${minipoolAddress}: ${nextSlot} nextSlot no good for ${fromSlot}-${toSlot}`)
+        // TODO: update db instead
+        continue
+      }
+      // TODO: skip slots that are before this validator became active in rocket pool
+      for (const [slotOffset, result] of resultsBySlot.entries()) {
+        const slot = fromSlot + slotOffset
+        const epoch = epochOfSlot(slot)
+        const attestation = db.get(`${chainId}/validator/${validatorIndex}/attestation/${epoch}`)
+        if (attestation?.slot === slot) {
+          const attestations = result.attestations || {duties: 0, missed: 0, reward: 0n}
+          attestations.duties += 1
+          if (!attestation.attested)
+            attestations.missed += 1
+          for (const rewardType of ['head', 'target', 'source', 'inactivity'])
+            attestations.reward += BigInt(attestation[rewardType])
+          result.attestations = attestations
+        }
+
+        // TODO: add proposals
+        // TODO: add syncs
+      }
+    }
+    // TODO: collate results into years/months/days
+    // TODO: emit perfDetails object
+  })
+
   socket.on('disconnect', () => {
     log(`disconnection: ${socket.id}`)
   })

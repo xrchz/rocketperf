@@ -299,6 +299,7 @@ while (epoch <= finalizedEpoch) {
         const response = await fetch(proposalRewardUrl)
         if (response.status === 404) {
           log(`Adding missed proposal for ${validator_index} @ ${slot}`)
+          proposal.missed = true
           proposal.reward = '0'
         }
         else if (response.status === 200) {

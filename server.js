@@ -7,7 +7,7 @@ import https from 'node:https'
 import { Server } from 'socket.io'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { db, log, provider, chainId, beaconRpcUrl, timeSlotConvs, getFinalizedSlot } from './lib.js'
+import { db, log, provider, chainId, beaconRpcUrl, timeSlotConvs, getFinalizedSlot, epochOfSlot } from './lib.js'
 
 const app = express()
 
@@ -261,6 +261,17 @@ function setSlot(socket, dir, slot) {
   socket.emit('setSlot', keyTime, time)
 }
 
+const emptyDutyData = { duties: 0, missed: 0, reward: 0n }
+const emptyDay = {
+  attestations: {...emptyDutyData},
+  proposals: {...emptyDutyData},
+  syncs: {...emptyDutyData}
+}
+const mergeIntoDuty = (d, x) => Object.keys(d).forEach(k => d[k] += x[k])
+const mergeIntoDay = (day, r) => Object.entries(day).forEach(([k, duty]) => {
+  if (k in r) mergeIntoDuty(duty, r[k])
+})
+
 io.on('connection', socket => {
 
   log(`connection: ${socket.id}`)
@@ -337,10 +348,10 @@ io.on('connection', socket => {
     for (const minipoolAddress of minipoolAddresses) {
       const pubkey = await rocketMinipoolManager.getMinipoolPubkey(minipoolAddress)
       const validatorIndex = await getIndexFromPubkey(pubkey)
-      const nextSlot = db.get(`${chainId}/validator/${validatorIndex}/nextSlot`)
-      if (typeof(nextSlot) != 'number' || nextSlot < toSlot) {
-        console.warn(`Failed to include perfDetails for ${minipoolAddress}: ${nextSlot} nextSlot no good for ${fromSlot}-${toSlot}`)
-        // TODO: update db instead
+      const nextEpoch = db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`)
+      if (typeof(nextEpoch) != 'number' || nextEpoch < epochOfSlot(toSlot)) {
+        console.warn(`Failed to include perfDetails for ${minipoolAddress}: epoch ${nextEpoch} no good for ${fromSlot}-${toSlot}`)
+        // TODO: update db instead?
         continue
       }
       // TODO: skip slots that are before this validator became active in rocket pool
@@ -349,7 +360,7 @@ io.on('connection', socket => {
         const epoch = epochOfSlot(slot)
         const attestation = db.get(`${chainId}/validator/${validatorIndex}/attestation/${epoch}`)
         if (attestation?.slot === slot) {
-          const attestations = result.attestations || {duties: 0, missed: 0, reward: 0n}
+          const attestations = result.attestations || {...emptyDutyData}
           attestations.duties += 1
           if (!attestation.attested)
             attestations.missed += 1
@@ -358,12 +369,60 @@ io.on('connection', socket => {
           result.attestations = attestations
         }
 
-        // TODO: add proposals
-        // TODO: add syncs
+        const proposal = db.get(`${chainId}/validator/${validatorIndex}/proposal/${slot}`)
+        if (proposal) {
+          const proposals = result.proposals || {...emptyDutyData}
+          proposals.duties += 1
+          if (proposal.missed)
+            proposals.missed += 1
+          proposals.reward += BigInt(proposal.reward)
+          result.proposals = proposals
+        }
+
+        const sync = db.get(`${chainId}/validator/${validatorIndex}/sync/${epoch}`)
+        if (sync) {
+          const syncs = result.syncs || {...emptyDutyData}
+          if (sync.rewards.length !== 32)
+            console.warn(`unexpected sync.rewards.length ${sync.rewards.length} for ${validatorIndex} at ${epoch}`)
+          syncs.duties += 32
+          syncs.missed += sync.missed.length
+          syncs.rewards += sync.rewards.reduce((a, s) => a + BigInt(s), 0n)
+        }
       }
     }
-    // TODO: collate results into years/months/days
-    // TODO: emit perfDetails object
+    const date = new Date(slotToTime(fromSlot) * 1000)
+    let currentDay = {...emptyDay}
+    let currentDayKey = date.getUTCDate()
+    let currentMonth = {[currentDayKey]: currentDay}
+    let currentMonthKey = date.getUTCMonth()
+    let currentYear = {[currentMonthKey]: currentMonth}
+    let currentYearKey = date.getUTCFullYear()
+    const perfDetails = {[currentYearKey]: currentYear}
+    for (const results of resultsBySlot.entries()) {
+      mergeIntoDay(currentDay, results)
+      date.setMilliseconds(secondsPerSlot * 1000)
+      if (currentDayKey !== date.getUTCDate()) {
+        currentDay = {...emptyDay}
+        currentDayKey = date.getUTCDate()
+        if (currentMonthKey !== date.getUTCMonth()) {
+          currentMonthKey = date.getUTCMonth()
+          currentMonth = {}
+          if (currentYearKey !== date.getUTCFullYear()) {
+            currentYearKey = date.getUTCFullYear()
+            currentYear = {}
+            perfDetails[currentYearKey] = currentYear
+          }
+          currentYear[currentMonthKey] = currentMonth
+        }
+        currentMonth[currentDayKey] = currentDay
+      }
+    }
+    Object.values(perfDetails).forEach(year =>
+      Object.values(year).forEach(month =>
+        Object.values(month).forEach(day =>
+          Object.values(day).forEach(duty =>
+            duty.reward = duty.reward.toString()))))
+    socket.emit('perfDetails', perfDetails)
   })
 
   socket.on('disconnect', () => {

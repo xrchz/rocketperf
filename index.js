@@ -44,7 +44,7 @@ entityEntryBox.rows = 6
 entityEntryBox.autocomplete = 'on'
 
 entityEntryBox.addEventListener('change',
-  () => socket.emit('entities', entityEntryBox.value),
+  () => socket.volatile.emit('entities', entityEntryBox.value),
   {passive: true}
 )
 
@@ -125,7 +125,7 @@ const slotSelectionHandler = (e) => {
   const dir = e.target.dataset.dir
   const type = e.target.type
   const otherType = type === 'time' ? 'Date' : type === 'date' ? 'Time' : null
-  socket.emit('setSlot',
+  socket.volatile.emit('setSlot',
     {dir, type, value: e.target.value,
      other: otherType && slotSelectors.get(`${dir}${otherType}`).value
     }
@@ -179,7 +179,7 @@ const makeButton = (v) => {
   b.type = 'button'
   b.value = v
   b.addEventListener('click', () =>
-    socket.emit('setSlotRange', v.split(/\s/).at(-1).toLowerCase()))
+    socket.volatile.emit('setSlotRange', v.split(/\s/).at(-1).toLowerCase()))
   return b
 }
 

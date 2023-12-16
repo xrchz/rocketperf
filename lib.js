@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import { open } from 'lmdb'
 import { ethers } from 'ethers'
 

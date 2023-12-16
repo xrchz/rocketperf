@@ -136,6 +136,24 @@ slotSelectors.forEach(e =>
   e.addEventListener('change', slotSelectionHandler, {passive: true})
 )
 
+const minipoolsInTable = () => Array.from(
+  minipoolsList.querySelectorAll('td.minipool > a')
+).flatMap(a =>
+  a.parentElement.parentElement
+    .querySelector('input[type="checkbox"]').checked ?
+  [a.href.slice(-42)] : []
+)
+
+const updatePerformanceDetails = () => {
+  const fromValue = parseInt(fromSlot.value)
+  const toValue = parseInt(toSlot.value)
+  if (0 <= fromValue && fromValue <= toValue) {
+    socket.volatile.emit('perfDetails',
+      fromValue, toValue, minipoolsInTable()
+    )
+  }
+}
+
 function ensureValidRange() {
   const fromOld = fromSlot.value, toOld = toSlot.value
   if (!(parseInt(fromSlot.value) <= parseInt(toSlot.value))) {
@@ -149,7 +167,7 @@ function ensureValidRange() {
 socket.on('setSlot', (key, value) => {
   slotSelectors.get(key).value = value
   if (key.endsWith('Slot')) ensureValidRange()
-  // TODO: update performance info
+  updatePerformanceDetails()
 })
 
 const rangeButtons = document.createElement('div')
@@ -259,7 +277,7 @@ socket.on('perfDetails', data => {
   // <data> = { <year>: {<month>: {<day>: {attestations: <dutyData>, proposals: <dutyData>, syncs: <dutyData>}, ...}, ...}, ...}
   // <dutyData> = { duties: <num>, missed: <num>, reward: <string(bigint)> }
   const totals = {...emptyDay}
-  const addTotals = (day) => Object.entries().forEach((k, v) => addTotal(totals[k], v))
+  const addTotals = (day) => Object.entries(day).forEach(([k, v]) => addTotal(totals[k], v))
   for (const year of Object.keys(data).toSorted(compareNumbers)) {
     const yearDiv = frag.appendChild(document.createElement('div'))
     yearDiv.classList.add('year')
@@ -276,7 +294,7 @@ socket.on('perfDetails', data => {
         dayDiv.classList.add('day')
         const {totalDuties, totalMissed} = Object.values(dayObj).reduce(
           ({totalDuties, totalMissed}, {duties, missed}) =>
-          ({totalDuties: totalDuties + duties, totalMissed = totalMissed + missed}))
+          ({totalDuties: totalDuties + duties, totalMissed: totalMissed + missed}))
         const performance = (totalDuties - totalMissed) / totalDuties
         const performanceDecile = Math.round(performance * 10)
         dayDiv.classList.add(`perf${performanceDecile}`)
@@ -293,20 +311,6 @@ socket.on('perfDetails', data => {
 })
 
 // TODO: add selector for subperiod sizes (instead of year/month/day)?
-
-const minipoolsInTable = () => Array.from(
-  minipoolsList.querySelectorAll('.minipool')
-).flatMap(a =>
-  a.parentElement.querySelector('input[type="checkbox"]').checked ?
-  [a.href.slice(-42)] : []
-)
-
-const updatePerformanceDetails = () =>
-  socket.emit('perfDetails',
-    parseInt(fromSlot.value),
-    parseInt(toSlot.value),
-    minipoolsInTable()
-  )
 
 // TODO: add copy button for addresses in minipoolsList, and copy for whole columns, and whole table?
 
@@ -331,7 +335,7 @@ socket.on('minipools', minipools => {
     const sel = document.createElement('input')
     sel.type = 'checkbox'
     sel.checked = selected
-    // TODO: on selection change, update performance info
+    sel.addEventListener('change', updatePerformanceDetails, {passive: true})
     tr.append(
       ...[mpA, nodeA, wA, valA, sel].map((a, i) => {
         const td = document.createElement('td')
@@ -353,7 +357,7 @@ socket.on('minipools', minipools => {
   minipoolsList.appendChild(frag)
   if (minipools.length) {
     minipoolsList.classList.remove('hidden')
-    // TODO: update performance info
+    updatePerformanceDetails()
   }
   else minipoolsList.classList.add('hidden')
 })

@@ -7,7 +7,9 @@ import https from 'node:https'
 import { Server } from 'socket.io'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { db, log, provider, chainId, beaconRpcUrl, timeSlotConvs, getFinalizedSlot, epochOfSlot } from './lib.js'
+import { db, log, provider, chainId, beaconRpcUrl,
+         timeSlotConvs, getFinalizedSlot, epochOfSlot, secondsPerSlot }
+       from './lib.js'
 
 const app = express()
 

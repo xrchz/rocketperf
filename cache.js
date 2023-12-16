@@ -102,10 +102,6 @@ for (const validatorIndex of validatorIdsToProcess) {
 
 const finalizedEpoch = epochOfSlot(finalizedSlot - 1)
 
-// TODO: store validator uptodate epoch instead of slot
-// TODO: delete the nextSlot keys from the db
-// TODO: use the slots of the epoch under consideration only
-
 let epoch = Math.min(
   ...(validatorIdsToProcess.map(validatorIndex =>
         db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`) ??

@@ -340,8 +340,10 @@ io.on('connection', socket => {
     else if (period === 'hour') {
       date.setMinutes(0, 0, 0)
     }
-    fromSlot = timeToSlot(date.getTime() / 1000)
-    if (fromSlot) setSlot(socket, 'from', fromSlot)
+    if (period !== 'time') {
+      fromSlot = timeToSlot(date.getTime() / 1000)
+      if (fromSlot) setSlot(socket, 'from', fromSlot)
+    }
   })
 
   socket.on('perfDetails', async (fromSlot, toSlot, minipoolAddresses) => {

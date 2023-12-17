@@ -147,10 +147,9 @@ const minipoolsInTable = () => Array.from(
 const updatePerformanceDetails = () => {
   const fromValue = parseInt(fromSlot.value)
   const toValue = parseInt(toSlot.value)
-  if (0 <= fromValue && fromValue <= toValue) {
-    socket.volatile.emit('perfDetails',
-      fromValue, toValue, minipoolsInTable()
-    )
+  const minipools = minipoolsInTable()
+  if (0 <= fromValue && fromValue <= toValue && minipools.length) {
+    socket.volatile.emit('perfDetails', fromValue, toValue, minipools)
   }
 }
 
@@ -160,14 +159,26 @@ function ensureValidRange() {
     if (!fromSlot.value) { toSlot.value = fromSlot.value }
     toSlot.value = fromSlot.value
   }
-  if (fromOld != fromSlot.value && !isNaN(parseInt(fromSlot.value))) fromSlot.dispatchEvent(new Event('change'))
-  if (toOld != toSlot.value && !isNaN(parseInt(toSlot.value))) toSlot.dispatchEvent(new Event('change'))
+  let changed = false
+  if (fromOld != fromSlot.value && !isNaN(parseInt(fromSlot.value))) {
+    fromSlot.dispatchEvent(new Event('change'))
+    changed = true
+  }
+  if (toOld != toSlot.value && !isNaN(parseInt(toSlot.value))) {
+    toSlot.dispatchEvent(new Event('change'))
+    changed = true
+  }
+  return changed
 }
 
 socket.on('setSlot', (key, value) => {
-  slotSelectors.get(key).value = value
-  if (key.endsWith('Slot')) ensureValidRange()
-  updatePerformanceDetails()
+  const elt = slotSelectors.get(key)
+  const oldValue = elt.value
+  elt.value = value
+  if (key.endsWith('Slot')) {
+    if (oldValue !== value && !ensureValidRange())
+      updatePerformanceDetails()
+  }
 })
 
 const rangeButtons = document.createElement('div')
@@ -261,6 +272,7 @@ summaryTable.appendChild(document.createElement('tr'))
 // TODO: add attestation accuracy info
 
 const detailsDiv = document.createElement('div')
+detailsDiv.id = 'details'
 
 const compareNumbers = (a,b) => a - b
 const monthNames = ['January', 'February', 'March', 'April', 'March', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -276,6 +288,7 @@ const addTotal = (t, d) => Object.keys(t).forEach(k => t[k] += d[k])
 socket.on('perfDetails', data => {
   // <data> = { <year>: {<month>: {<day>: {attestations: <dutyData>, proposals: <dutyData>, syncs: <dutyData>}, ...}, ...}, ...}
   // <dutyData> = { duties: <num>, missed: <num>, reward: <string(bigint)> }
+  console.log(`Received perfDetails: ${JSON.stringify(data)}`)
   const totals = {...emptyDay}
   const addTotals = (day) => Object.entries(day).forEach(([k, v]) => addTotal(totals[k], v))
   for (const year of Object.keys(data).toSorted(compareNumbers)) {
@@ -292,11 +305,12 @@ socket.on('perfDetails', data => {
         const dayObj = monthObj[day]
         const dayDiv = monthDiv.appendChild(document.createElement('div'))
         dayDiv.classList.add('day')
+        dayDiv.appendChild(document.createElement('span')).innerText = day
         const {totalDuties, totalMissed} = Object.values(dayObj).reduce(
           ({totalDuties, totalMissed}, {duties, missed}) =>
           ({totalDuties: totalDuties + duties, totalMissed: totalMissed + missed}))
         const performance = (totalDuties - totalMissed) / totalDuties
-        const performanceDecile = Math.round(performance * 10)
+        const performanceDecile = totalDuties ? Math.round(performance * 10) : 'none'
         dayDiv.classList.add(`perf${performanceDecile}`)
         Object.keys(dayObj).forEach(k => dayObj[k].reward = BigInt(dayObj[k].reward))
         const dutyTitle = (key) =>
@@ -315,6 +329,7 @@ socket.on('perfDetails', data => {
 // TODO: add copy button for addresses in minipoolsList, and copy for whole columns, and whole table?
 
 socket.on('minipools', minipools => {
+  console.log(`Received minipools`)
   for (const {minipoolAddress, minipoolEnsName,
               nodeAddress, nodeEnsName,
               withdrawalAddress, withdrawalEnsName,
@@ -374,6 +389,7 @@ socket.on('unknownEntities', entities => {
 })
 
 const footerDiv = document.createElement('div')
+footerDiv.id = 'footer'
 const codeLink = document.createElement('a')
 codeLink.href = 'https://github.com/xrchz/rocketperf'
 codeLink.innerText = 'site code'

@@ -204,7 +204,7 @@ while (epoch <= finalizedEpoch) {
       for (const validatorIndex of validatorIdsToConsider.keys()) {
         const attestationKey = `${chainId}/validator/${validatorIndex}/attestation/${attestationEpoch}`
         const attestation = db.get(attestationKey)
-        if (attestation?.slot === slot && attestion.index === index && !attestation.attested) {
+        if (attestation?.slot == slot && attestion.index == index && !attestation.attested) {
           if (attestedBits[attestation.position]) {
             log(`Adding attestation for ${slot} for validator ${validatorIndex} (found in ${searchSlot})`)
             attestation.attested = true

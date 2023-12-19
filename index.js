@@ -275,7 +275,7 @@ const detailsDiv = document.createElement('div')
 detailsDiv.id = 'details'
 
 const compareNumbers = (a,b) => a - b
-const monthNames = ['January', 'February', 'March', 'April', 'March', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 const emptyDutyData = { duties: 0, missed: 0, reward: 0n }
 const emptyDay = {
@@ -285,23 +285,36 @@ const emptyDay = {
 }
 const addTotal = (t, d) => Object.keys(t).forEach(k => t[k] += d[k])
 
+// TODO: make weekday start configurable (Sun vs Mon)
+
 socket.on('perfDetails', data => {
   // <data> = { <year>: {<month>: {<day>: {attestations: <dutyData>, proposals: <dutyData>, syncs: <dutyData>}, ...}, ...}, ...}
   // <dutyData> = { duties: <num>, missed: <num>, reward: <string(bigint)> }
   console.log(`Received perfDetails: ${JSON.stringify(data)}`)
   const totals = {...emptyDay}
   const addTotals = (day) => Object.entries(day).forEach(([k, v]) => addTotal(totals[k], v))
-  for (const year of Object.keys(data).toSorted(compareNumbers)) {
-    const yearDiv = frag.appendChild(document.createElement('div'))
+  for (const year of Object.keys(data).map(k => parseInt(k)).toSorted(compareNumbers)) {
+    const yearContainer = frag.appendChild(document.createElement('div'))
+    yearContainer.classList.add('yearContainer')
+    yearContainer.appendChild(document.createElement('span')).innerText = year
+    const yearDiv = yearContainer.appendChild(document.createElement('div'))
     yearDiv.classList.add('year')
-    yearDiv.appendChild(document.createElement('span')).innerText = year
     const yearObj = data[year]
-    for (const month of Object.keys(yearObj).toSorted(compareNumbers)) {
-      const monthDiv = yearDiv.appendChild(document.createElement('div'))
+    for (const month of Object.keys(yearObj).map(k => parseInt(k)).toSorted(compareNumbers)) {
+      const monthContainer = yearDiv.appendChild(document.createElement('div'))
+      monthContainer.classList.add('monthContainer')
+      monthContainer.appendChild(document.createElement('span')).innerText = monthNames[month].slice(0, 3)
+      const monthDiv = monthContainer.appendChild(document.createElement('div'))
       monthDiv.classList.add('month')
-      monthDiv.appendChild(document.createElement('span')).innerText = monthNames[month].slice(0, 3)
       const monthObj = yearObj[month]
-      for (const day of Object.keys(monthObj).toSorted(compareNumbers)) {
+      const days = Object.keys(monthObj).map(k => parseInt(k)).toSorted(compareNumbers)
+      const spacerDays = ((new Date(`${year}-${month + 1}-${days[0]}`)).getUTCDay() + 6) % 7
+      for (const spacerDay of Array(spacerDays).fill()) {
+        const dayDiv = monthDiv.appendChild(document.createElement('div'))
+        dayDiv.classList.add('day')
+        dayDiv.classList.add('spacer')
+      }
+      for (const day of days) {
         const dayObj = monthObj[day]
         const dayDiv = monthDiv.appendChild(document.createElement('div'))
         dayDiv.classList.add('day')
@@ -327,6 +340,12 @@ socket.on('perfDetails', data => {
 // TODO: add selector for subperiod sizes (instead of year/month/day)?
 
 // TODO: add copy button for addresses in minipoolsList, and copy for whole columns, and whole table?
+
+// TODO: add select-all, select-none option for include
+
+// TODO: add sorting options for the columns?
+
+// TODO: add loading indication for details
 
 socket.on('minipools', minipools => {
   console.log(`Received minipools`)

@@ -348,7 +348,7 @@ io.on('connection', socket => {
 
   socket.on('perfDetails', async (fromSlot, toSlot, minipoolAddresses) => {
     // TODO: check slots are a valid range, i.e. in [0, finalizedSlot]
-    const resultsBySlot = Array(toSlot - fromSlot).fill().map(() => {})
+    const resultsBySlot = Array(toSlot - fromSlot + 1).fill().map(() => ({}))
     for (const minipoolAddress of minipoolAddresses) {
       const pubkey = await rocketMinipoolManager.getMinipoolPubkey(minipoolAddress)
       const validatorIndex = await getIndexFromPubkey(pubkey)
@@ -369,7 +369,7 @@ io.on('connection', socket => {
           if (!attestation.attested)
             attestations.missed += 1
           for (const rewardType of ['head', 'target', 'source', 'inactivity'])
-            attestations.reward += BigInt(attestation[rewardType])
+            attestations.reward += BigInt(attestation.reward[rewardType])
           result.attestations = attestations
         }
 
@@ -402,7 +402,7 @@ io.on('connection', socket => {
     let currentYear = {[currentMonthKey]: currentMonth}
     let currentYearKey = date.getUTCFullYear()
     const perfDetails = {[currentYearKey]: currentYear}
-    for (const results of resultsBySlot.entries()) {
+    for (const results of resultsBySlot.values()) {
       mergeIntoDay(currentDay, results)
       date.setMilliseconds(secondsPerSlot * 1000)
       if (currentDayKey !== date.getUTCDate()) {

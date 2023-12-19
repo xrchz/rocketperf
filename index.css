@@ -58,17 +58,42 @@ div.perf70   { background-color: color-mix(in srgb, darkred, darkgreen 70%); }
 div.perf80   { background-color: color-mix(in srgb, darkred, darkgreen 80%); }
 div.perf90   { background-color: color-mix(in srgb, darkred, darkgreen 90%); }
 div.perf100  { background-color: darkgreen; }
-div#details, div.year, div.month {
+div#details {
   display: flex;
-  flex-direction: row;
-  justify-content: space-evenly;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 2em;
+  margin-left: 2em;
+  margin-right: 2em;
 }
 div.year {
-  max-width: 42em;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin-left: 2em;
+  margin-right: 2em;
+  gap: 1em;
 }
 div.month {
-  max-width: 14em;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.2em;
+  max-width: 16em;
+}
+div.yearContainer, div.monthContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+div.yearContainer > span, div.monthContainer > span {
+  text-align: center;
+  width: 100%;
+  padding: 0.1em;
+}
+div.yearContainer > span {
+  font-weight: bold;
+}
+div.day.spacer {
+  background-color: orange;
 }
 div.day {
   height: 2em;
@@ -76,6 +101,7 @@ div.day {
   display: flex;
   margin: auto;
   align-items: center;
+  justify-content: center;
 }
 div.day > span {
   font-size: smaller;

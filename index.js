@@ -278,11 +278,11 @@ const compareNumbers = (a,b) => a - b
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 const emptyDutyData = { duties: 0, missed: 0, reward: 0n }
-const emptyDay = {
+const emptyDay = () => ({
   attestations: {...emptyDutyData},
   proposals: {...emptyDutyData},
   syncs: {...emptyDutyData}
-}
+})
 const addTotal = (t, d) => Object.keys(t).forEach(k => t[k] += d[k])
 
 // TODO: make weekday start configurable (Sun vs Mon)
@@ -291,7 +291,7 @@ socket.on('perfDetails', data => {
   // <data> = { <year>: {<month>: {<day>: {attestations: <dutyData>, proposals: <dutyData>, syncs: <dutyData>}, ...}, ...}, ...}
   // <dutyData> = { duties: <num>, missed: <num>, reward: <string(bigint)> }
   console.log(`Received perfDetails: ${JSON.stringify(data)}`)
-  const totals = {...emptyDay}
+  const totals = {...emptyDay()}
   const addTotals = (day) => Object.entries(day).forEach(([k, v]) => addTotal(totals[k], v))
   for (const year of Object.keys(data).map(k => parseInt(k)).toSorted(compareNumbers)) {
     const yearContainer = frag.appendChild(document.createElement('div'))
@@ -321,9 +321,11 @@ socket.on('perfDetails', data => {
         dayDiv.appendChild(document.createElement('span')).innerText = day
         const {totalDuties, totalMissed} = Object.values(dayObj).reduce(
           ({totalDuties, totalMissed}, {duties, missed}) =>
-          ({totalDuties: totalDuties + duties, totalMissed: totalMissed + missed}))
+          ({totalDuties: totalDuties + duties, totalMissed: totalMissed + missed}),
+          {totalDuties: 0, totalMissed: 0}
+        )
         const performance = (totalDuties - totalMissed) / totalDuties
-        const performanceDecile = totalDuties ? Math.round(performance * 10) : 'none'
+        const performanceDecile = totalDuties ? Math.round(performance * 10) * 10 : 'none'
         dayDiv.classList.add(`perf${performanceDecile}`)
         Object.keys(dayObj).forEach(k => dayObj[k].reward = BigInt(dayObj[k].reward))
         const dutyTitle = (key) =>

@@ -264,11 +264,11 @@ function setSlot(socket, dir, slot) {
 }
 
 const emptyDutyData = { duties: 0, missed: 0, reward: 0n }
-const emptyDay = {
+const emptyDay = () => ({
   attestations: {...emptyDutyData},
   proposals: {...emptyDutyData},
   syncs: {...emptyDutyData}
-}
+})
 const mergeIntoDuty = (d, x) => Object.keys(d).forEach(k => d[k] += x[k])
 const mergeIntoDay = (day, r) => Object.entries(day).forEach(([k, duty]) => {
   if (k in r) mergeIntoDuty(duty, r[k])
@@ -347,7 +347,11 @@ io.on('connection', socket => {
   })
 
   socket.on('perfDetails', async (fromSlot, toSlot, minipoolAddresses) => {
-    // TODO: check slots are a valid range, i.e. in [0, finalizedSlot]
+    const finalizedSlot = await getFinalizedSlot()
+    if (!(0 <= fromSlot && fromSlot <= toSlot && toSlot <= finalizedSlot)) {
+      console.warn(`Invalid slot range [${fromSlot}, ${toSlot}] (finalized ${finalizedSlot})`)
+      return
+    }
     const resultsBySlot = Array(toSlot - fromSlot + 1).fill().map(() => ({}))
     for (const minipoolAddress of minipoolAddresses) {
       const pubkey = await rocketMinipoolManager.getMinipoolPubkey(minipoolAddress)
@@ -395,7 +399,7 @@ io.on('connection', socket => {
       }
     }
     const date = new Date(slotToTime(fromSlot) * 1000)
-    let currentDay = {...emptyDay}
+    let currentDay = {...emptyDay()}
     let currentDayKey = date.getUTCDate()
     let currentMonth = {[currentDayKey]: currentDay}
     let currentMonthKey = date.getUTCMonth()
@@ -406,7 +410,7 @@ io.on('connection', socket => {
       mergeIntoDay(currentDay, results)
       date.setMilliseconds(secondsPerSlot * 1000)
       if (currentDayKey !== date.getUTCDate()) {
-        currentDay = {...emptyDay}
+        currentDay = {...emptyDay()}
         currentDayKey = date.getUTCDate()
         if (currentMonthKey !== date.getUTCMonth()) {
           currentMonthKey = date.getUTCMonth()

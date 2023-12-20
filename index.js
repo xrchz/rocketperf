@@ -77,11 +77,15 @@ minipoolsList.appendChild(document.createElement('tr'))
       bDown.value = '⬇️'
       bDown.title = 'sort column descending'
       bCopy.value = '📋'
-      bCopy.title = 'copy column'
+      bCopy.title = 'copy unique column items'
       bCopy.addEventListener('click', () => {
         const columnText = Array.from(
-          minipoolsList.querySelectorAll(`td[headers~="${headerId}"] > a`)
-        ).map(a => a.innerText).join('\n')
+          new Set(
+            Array.from(
+              minipoolsList.querySelectorAll(`td[headers~="${headerId}"] > a`)
+            ).map(a => a.innerText)
+          ).values()
+        ).join('\n')
         if (columnText.length)
           navigator.clipboard.writeText(columnText)
       }, {passive: true})

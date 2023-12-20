@@ -63,6 +63,43 @@ minipoolsList.appendChild(document.createElement('tr'))
       return th
     })
   )
+minipoolsList.appendChild(document.createElement('tr'))
+  .append(
+    ...headings.map((h, i) => {
+      const th = document.createElement('th')
+      th.classList.add('columnTools')
+      const headerId = `th-${h.toLowerCase()}`
+      const bUp = document.createElement('input')
+      const bDown = document.createElement('input')
+      const bCopy = document.createElement('input')
+      bUp.value = '⬆️'
+      bUp.title = 'sort column ascending'
+      bDown.value = '⬇️'
+      bDown.title = 'sort column descending'
+      bCopy.value = '📋'
+      bCopy.title = 'copy column'
+      bCopy.addEventListener('click', () => {
+        const columnText = Array.from(
+          minipoolsList.querySelectorAll(`td[headers~="${headerId}"] > a`)
+        ).map(a => a.innerText).join('\n')
+        if (columnText.length)
+          navigator.clipboard.writeText(columnText)
+      }, {passive: true})
+      const buttons = [bUp, bDown, bCopy]
+      buttons.forEach(b => b.type = 'button')
+      if (h == 'Include') {
+        const ch = document.createElement('input')
+        ch.type = 'checkbox'
+        th.append(...buttons.toSpliced(-1, 1, ch))
+      }
+      else
+        th.append(...buttons)
+      return th
+    })
+  )
+Array.from(minipoolsList.children).forEach(
+  r => r.classList.add('head')
+)
 
 const slotSelectionDiv = document.createElement('div')
 const fromDateLabel = document.createElement('label')
@@ -328,6 +365,7 @@ socket.on('perfDetails', data => {
         const performanceDecile = totalDuties ? Math.round(performance * 10) * 10 : 'none'
         dayDiv.classList.add(`perf${performanceDecile}`)
         Object.keys(dayObj).forEach(k => dayObj[k].reward = BigInt(dayObj[k].reward))
+        // TODO: exclude lines with 0 duties
         const dutyTitle = (key) =>
           `${dayObj[key].duties - dayObj[key].missed}/${dayObj[key].duties}: ${formatGwei(dayObj[key].reward)} gwei`
         dayDiv.title = `A: ${dutyTitle('attestations')}\nP: ${dutyTitle('proposals')}\nS: ${dutyTitle('syncs')}`
@@ -389,7 +427,9 @@ socket.on('minipools', minipools => {
     valA.parentElement.classList.add('validator')
     sel.parentElement.classList.add('selected')
   }
-  minipoolsList.replaceChildren(minipoolsList.firstElementChild)
+  minipoolsList.replaceChildren(
+    ...Array.from(minipoolsList.querySelectorAll('tr.head'))
+  )
   minipoolsList.appendChild(frag)
   if (minipools.length) {
     minipoolsList.classList.remove('hidden')

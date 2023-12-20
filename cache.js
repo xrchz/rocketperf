@@ -37,12 +37,6 @@ function hexStringToBitlist(s) {
 
 const MAX_QUERY_RANGE = 1000
 
-/*
-minipools to handle for mockup:
-0xAdADA999Db795Ba2A5a1Eb61ee32CEE9C06735Cd - 918040
-0xAdaDA000C278690c88C04F87382f19EEDFbc1812 - 509644
-*/
-
 const rocketStorage = new ethers.Contract(
   await provider.resolveName('rocketstorage.eth'),
   ['event NodeWithdrawalAddressSet (address indexed node, address indexed withdrawalAddress, uint256 time)'],
@@ -56,7 +50,7 @@ const rocketStorageGenesisBlockByChain = {
 const rocketStorageGenesisBlock = rocketStorageGenesisBlockByChain[chainId]
 
 const finalizedBlockNumber = await provider.getBlock('finalized').then(b => b.number)
-const finalizedSlot = 6000000 // await getFinalizedSlot() TODO
+const finalizedSlot = await getFinalizedSlot()
 
 let withdrawalAddressBlock = db.get(`${chainId}/withdrawalAddressBlock`)
 if (!withdrawalAddressBlock) withdrawalAddressBlock = rocketStorageGenesisBlock
@@ -93,13 +87,13 @@ async function activationEpoch(validatorIndex) {
 }
 
 const validatorIdsToProcess = [
-  '509045',
-  '509048',
-  '509049',
-  '509076',
-  '509077',
-  '509644',
-  '517312',
+  // '509045',
+  // '509048',
+  // '509049',
+  // '509076',
+  // '509077',
+  // '509644',
+  // '517312',
   '581781',
   '915834',
   '915835',
@@ -107,7 +101,13 @@ const validatorIdsToProcess = [
   '915837',
   '915838',
   '918039',
-  '918040'
+  '918040',
+  // '263489',
+  // '263491',
+  // '410932',
+  '583656',
+  '583658',
+  '583659',
 ]
 
 // TODO: get everything already in the db + validatorIdsToProcess
@@ -142,8 +142,11 @@ while (epoch <= finalizedEpoch) {
 
   const rewardsOptions = rewardsOptionsForEpoch(epoch)
 
-  if (rewardsOptions.body === '[]')
-    throw new Error(`${epoch} has no relevant active validators`)
+  if (rewardsOptions.body === '[]') {
+    console.warn(`${epoch} has no relevant active validators`)
+    epoch += 1
+    continue
+  }
 
   const firstSlotInEpoch = epoch * slotsPerEpoch
 

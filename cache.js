@@ -92,7 +92,23 @@ async function activationEpoch(validatorIndex) {
   return parseInt(json.data.validator.activation_epoch)
 }
 
-const validatorIdsToProcess = ['918040', '509644']
+const validatorIdsToProcess = [
+  '509045',
+  '509048',
+  '509049',
+  '509076',
+  '509077',
+  '509644',
+  '517312',
+  '581781',
+  '915834',
+  '915835',
+  '915836',
+  '915837',
+  '915838',
+  '918039',
+  '918040'
+]
 
 // TODO: get everything already in the db + validatorIdsToProcess
 const validatorIdsToConsider = new Map()
@@ -198,16 +214,16 @@ while (epoch <= finalizedEpoch) {
       return json.data.message.body
     })
     const attestations = blockData.attestations
-    for (const {aggregation_bits, data: {slot, index}} of attestations) {
+    for (const {aggregation_bits, data: {slot, index, beacon_block_root, source, target}} of attestations) {
       const attestedBits = hexStringToBitlist(aggregation_bits)
       const attestationEpoch = epochOfSlot(parseInt(slot))
       for (const validatorIndex of validatorIdsToConsider.keys()) {
         const attestationKey = `${chainId}/validator/${validatorIndex}/attestation/${attestationEpoch}`
         const attestation = db.get(attestationKey)
-        if (attestation?.slot == slot && attestation.index == index && !attestation.attested) {
+        if (attestation?.slot == slot && attestation.index == index && !(attestation.attested?.slot < searchSlot)) {
           if (attestedBits[attestation.position]) {
-            log(`Adding attestation for ${slot} for validator ${validatorIndex} (found in ${searchSlot})`)
-            attestation.attested = true
+            attestation.attested = { slot: searchSlot, head: beacon_block_root, source, target }
+            log(`Adding attestation for ${slot} (${attestationEpoch}) for validator ${validatorIndex} ${JSON.stringify(attestation.attested)}`)
             await db.put(attestationKey, attestation)
           }
         }
@@ -269,9 +285,24 @@ while (epoch <= finalizedEpoch) {
   for (const {validator_index, head, target, source, inactivity} of attestationRewards.total_rewards) {
     const attestationKey = `${chainId}/validator/${validator_index}/attestation/${epoch}`
     const attestation = db.get(attestationKey)
-    if (attestation && !('reward' in attestation)) {
-      log(`Adding attestation reward for epoch ${epoch} for validator ${validator_index}`)
+    if (attestation && !('reward' in attestation && 'ideal' in attestation)) {
+      const effectiveBalanceUrl = new URL(
+        `/eth/v1/beacon/states/${firstSlotInEpoch}/validators/${validator_index}`,
+        beaconRpcUrl
+      )
+      const effectiveBalance = await fetch(effectiveBalanceUrl).then(async res => {
+        if (res.status !== 200)
+          throw new Error(`Got ${res.status} fetching effective balance in ${firstSlotInEpoch} for ${validator_index}: ${await res.text()}`)
+        const json = await res.json()
+        return json.data.validator.effective_balance
+      })
       attestation.reward = {head, target, source, inactivity}
+      const ideal = attestationRewards.ideal_rewards.find(x => x.effective_balance === effectiveBalance)
+      if (!ideal) throw new Error(`Could not get ideal rewards for ${firstSlotInEpoch} ${validator_index} with ${effectiveBalance}`)
+      attestation.ideal = {}
+      for (const key of Object.keys(attestation.reward))
+        attestation.ideal[key] = ideal[key]
+      log(`Adding attestation reward for epoch ${epoch} for validator ${validator_index}: ${Object.entries(attestation.reward)} / ${Object.entries(attestation.ideal)}`)
       await db.put(attestationKey, attestation)
     }
   }

@@ -94,7 +94,7 @@ const validatorIdsToProcess = [
   // '509077',
   // '509644',
   // '517312',
-  '581781',
+  // '581781',
   '915834',
   '915835',
   '915836',
@@ -120,8 +120,10 @@ const finalizedEpoch = epochOfSlot(finalizedSlot - 1)
 
 let epoch = Math.min(
   ...(validatorIdsToProcess.map(validatorIndex =>
-        db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`) ??
-        validatorIdsToConsider.get(validatorIndex))
+        Math.max(
+          db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`) ?? 0,
+          validatorIdsToConsider.get(validatorIndex)
+        ))
      )
 )
 
@@ -150,6 +152,8 @@ while (epoch <= finalizedEpoch) {
 
   const firstSlotInEpoch = epoch * slotsPerEpoch
 
+  log(`Getting attestation duties for ${epoch}`)
+
   const attestationDutiesUrl = new URL(
     `/eth/v1/beacon/states/${firstSlotInEpoch}/committees?epoch=${epoch}`,
     beaconRpcUrl
@@ -176,6 +180,8 @@ while (epoch <= finalizedEpoch) {
     }
   }
 
+  log(`Getting sync duties for ${epoch}`)
+
   const syncDutiesUrl = new URL(
     `/eth/v1/beacon/states/${firstSlotInEpoch}/sync_committees?epoch=${epoch}`,
     beaconRpcUrl
@@ -199,6 +205,8 @@ while (epoch <= finalizedEpoch) {
       }
     }
   }
+
+  log(`Getting attestations and syncs for ${epoch}`)
 
   let searchSlot = firstSlotInEpoch
   while (searchSlot < firstSlotInEpoch + slotsPerEpoch) {
@@ -275,6 +283,8 @@ while (epoch <= finalizedEpoch) {
     searchSlot++
   }
 
+  log(`Getting attestation rewards for ${epoch}`)
+
   const attestationRewardsUrl = new URL(
     `/eth/v1/beacon/rewards/attestations/${epoch}`,
     beaconRpcUrl
@@ -310,6 +320,8 @@ while (epoch <= finalizedEpoch) {
     }
   }
 
+  log(`Getting proposals for ${epoch}`)
+
   const proposalUrl = new URL(
     `/eth/v1/validator/duties/proposer/${epoch}`,
     beaconRpcUrl
@@ -344,13 +356,16 @@ while (epoch <= finalizedEpoch) {
   }
 
   epoch += 1
+  const updated = []
   for (const validatorIndex of validatorIdsToConsider.keys()) {
     const nextEpochKey = `${chainId}/validator/${validatorIndex}/nextEpoch`
     if ((db.get(nextEpochKey) || 0) < epoch) {
-      log(`Updating nextEpoch to ${epoch} for ${validatorIndex}`)
+      updated.push(validatorIndex)
       await db.put(nextEpochKey, epoch)
     }
   }
+  if (updated.length)
+    log(`Updated nextEpoch to ${epoch} for ${updated}`)
 }
 
 // TODO: add listener for new epochs

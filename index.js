@@ -2,7 +2,7 @@ const socket = io()
 const frag = document.createDocumentFragment()
 const body = document.querySelector('body')
 
-const toId = (s) => s.replace(/\s/,'-')
+const toId = (s) => s.replace(/\s/,'-').replace(/%/,'percent')
 
 function formatUnits(wei, decimals) {
   const {val, neg} = wei < 0n ? {val: wei * -1n, neg: '-'} : {val: wei, neg: ''}
@@ -320,8 +320,16 @@ slotSelectionDiv.append(
   fromSlotLabel, toSlotLabel
 )
 
-const summaryHeadings = ['Assigned', 'Missed', 'Success Rate', 'Net Reward']
+const summaryHeadings = ['Assigned', 'Missed', 'Success Rate (%)', 'Net Reward (gwei)']
+const summaryFromDuty = (h, d) => {
+  if (h == summaryHeadings[0]) return d.duties
+  if (h == summaryHeadings[1]) return d.missed
+  if (h == summaryHeadings[2]) return Math.round(100 * 100 * ((d.duties - d.missed) / d.duties)) / 100
+  if (h == summaryHeadings[3]) return formatGwei(d.reward)
+  throw new Error(`Unknown heading ${h}`)
+}
 const allSummaryTable = document.createElement('table')
+allSummaryTable.id = 'allSummaryTable'
 const summaryTable = document.createElement('table')
 summaryTable.classList.add('hidden')
 allSummaryTable.classList.add('hidden')
@@ -333,6 +341,7 @@ allSummaryTable.appendChild(document.createElement('tr'))
     th.id = `th-${toId(h.toLowerCase())}`
     return th
   }))
+allSummaryTable.firstElementChild.classList.add('head')
 allSummaryTable.appendChild(document.createElement('tr'))
   .append(...Array.from(allSummaryTable.firstElementChild.children).map(h => {
     const td = document.createElement('td')
@@ -359,6 +368,9 @@ summaryTable.appendChild(document.createElement('tr'))
       return th
     })
   ))
+Array.from(summaryTable.children).forEach(
+  r => r.classList.add('head')
+)
 
 // TODO: fill tables
 // TODO: add attestation accuracy and reward info
@@ -382,7 +394,7 @@ const addTotal = (t, d) => Object.keys(t).forEach(k => t[k] += d[k])
 socket.on('perfDetails', data => {
   // <data> = { <year>: {<month>: {<day>: {attestations: <dutyData>, proposals: <dutyData>, syncs: <dutyData>}, ...}, ...}, ...}
   // <dutyData> = { duties: <num>, missed: <num>, reward: <string(bigint)> }
-  console.log(`Received perfDetails: ${JSON.stringify(data)}`)
+  // console.log(`Received perfDetails: ${JSON.stringify(data)}`)
   const totals = {...emptyDay()}
   const addTotals = (day) => Object.entries(day).forEach(([k, v]) => addTotal(totals[k], v))
   for (const year of Object.keys(data).map(k => parseInt(k)).toSorted(compareNumbers)) {
@@ -417,7 +429,9 @@ socket.on('perfDetails', data => {
           {totalDuties: 0, totalMissed: 0}
         )
         const performance = (totalDuties - totalMissed) / totalDuties
-        const performanceDecile = totalDuties ? Math.round(performance * 10) * 10 : 'none'
+        const performanceDecile = totalDuties ?
+          (totalMissed ? Math.round(performance * 10) * 10 : 'all')
+          : 'nil'
         dayDiv.classList.add(`perf${performanceDecile}`)
         Object.keys(dayObj).forEach(k => dayObj[k].reward = BigInt(dayObj[k].reward))
         // TODO: exclude lines with 0 duties
@@ -429,7 +443,17 @@ socket.on('perfDetails', data => {
     }
   }
   detailsDiv.replaceChildren(frag)
-  // TODO: add totals to summary table
+  const allSummaryTotals = {...emptyDutyData}
+  Object.values(totals).forEach(d => addTotal(allSummaryTotals, d))
+  for (const h of summaryHeadings) {
+    const td = document.getElementById(`td-${toId(h.toLowerCase())}`)
+    td.innerText = summaryFromDuty(h, allSummaryTotals)
+  }
+  if (allSummaryTotals.duties)
+    allSummaryTable.classList.remove('hidden')
+  else
+    allSummaryTable.classList.add('hidden')
+  // TODO: add totals to summaryTable
 })
 
 // TODO: make select-all, select-none option for include work

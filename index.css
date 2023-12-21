@@ -50,21 +50,25 @@ div.dirRangeButtons.to {
 div.dirRangeButtons.from {
   margin-right: 1em;
 }
+#allSummaryTable > tr > td {
+  text-align: right;
+}
 div#footer {
   margin-top: 2em;
 }
-div.perfnone { background-color: darkgray; }
-div.perf0    { background-color: darkred; }
-div.perf10   { background-color: color-mix(in srgb, darkred, darkgreen 10%); }
-div.perf20   { background-color: color-mix(in srgb, darkred, darkgreen 20%); }
-div.perf30   { background-color: color-mix(in srgb, darkred, darkgreen 30%); }
-div.perf40   { background-color: color-mix(in srgb, darkred, darkgreen 40%); }
-div.perf50   { background-color: color-mix(in srgb, darkred, darkgreen 50%); }
-div.perf60   { background-color: color-mix(in srgb, darkred, darkgreen 60%); }
-div.perf70   { background-color: color-mix(in srgb, darkred, darkgreen 70%); }
-div.perf80   { background-color: color-mix(in srgb, darkred, darkgreen 80%); }
-div.perf90   { background-color: color-mix(in srgb, darkred, darkgreen 90%); }
-div.perf100  { background-color: darkgreen; }
+div.perfnil { background-color: darkgray; }
+div.perf0   { background-color: darkred; }
+div.perf10  { background-color: color-mix(in srgb, red, green 10%); }
+div.perf20  { background-color: color-mix(in srgb, red, green 20%); }
+div.perf30  { background-color: color-mix(in srgb, red, green 30%); }
+div.perf40  { background-color: color-mix(in srgb, red, green 40%); }
+div.perf50  { background-color: color-mix(in srgb, red, green 50%); }
+div.perf60  { background-color: color-mix(in srgb, red, green 60%); }
+div.perf70  { background-color: color-mix(in srgb, red, green 70%); }
+div.perf80  { background-color: color-mix(in srgb, red, green 80%); }
+div.perf90  { background-color: color-mix(in srgb, red, green 90%); }
+div.perf100 { background-color: color-mix(in srgb, red, green 95%); }
+div.perfall { background-color: darkgreen; }
 div#details {
   display: flex;
   flex-direction: column;

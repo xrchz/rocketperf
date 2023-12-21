@@ -39,9 +39,16 @@ ul#entityFailures > li:not(:last-child)::after {
 div#fullRangeButtons {
   grid-column-end: span 2;
 }
-div.rangeButtons {
+div.rangeButtons, div.dirRangeButtons {
   display: flex;
   justify-content: space-around;
+  margin-bottom: 0.5em;
+}
+div.dirRangeButtons.to {
+  margin-left: 1em;
+}
+div.dirRangeButtons.from {
+  margin-right: 1em;
 }
 div#footer {
   margin-top: 2em;

@@ -251,11 +251,62 @@ rangeButtons.append(
   lastHourButton
 )
 
+// TODO: add option to select minimum activated slot for selected validators /
+// make the minimum fromSlot be this
+
 const fromButtons = document.createElement('div')
 const toButtons = document.createElement('div')
 fromButtons.classList.add('dirRangeButtons')
+fromButtons.classList.add('from')
 toButtons.classList.add('dirRangeButtons')
-// TODO: add actions to these buttons
+toButtons.classList.add('to')
+const secondsPerSlot = 12
+const minutesPerHour = 60
+const secondsPerMinute = 60
+const secondsPerHour = minutesPerHour * secondsPerMinute
+const slotsPerHour = secondsPerHour / secondsPerSlot
+const hoursPerDay = 24
+const slotsPerDay = slotsPerHour * hoursPerDay
+const daysPerWeek = 7
+const slotsPerWeek = slotsPerDay * daysPerWeek
+const daysPerMonth = 30.4375
+const slotsPerMonth = Math.round(slotsPerDay * daysPerMonth)
+const daysPerYear = 365.25
+const slotsPerYear = Math.round(slotsPerDay * daysPerYear)
+const timeIncrements = [
+  {name: 'hour',  slots: slotsPerHour},
+  {name: 'day',   slots: slotsPerDay},
+  {name: 'week',  slots: slotsPerWeek},
+  {name: 'month', slots: slotsPerMonth},
+  {name: 'year',  slots: slotsPerYear}
+].reverse()
+const add = (x, y) => x + y
+const sub = (x, y) => x - y
+for (const {name, slots} of timeIncrements) {
+  function makeAddSub(target) {
+    const addButton = document.createElement('input')
+    const subButton = document.createElement('input')
+    addButton.type = 'button'
+    subButton.type = 'button'
+    addButton.value = `+${name[0]}`
+    subButton.value = `-${name[0]}`
+    function makeHandler(op) {
+      return () => {
+        const currentValue = parseInt(target.value)
+        if (typeof currentValue == 'number') {
+          target.value = op(currentValue, slots)
+          target.dispatchEvent(new Event('change'))
+        }
+      }
+    }
+    addButton.addEventListener('click', makeHandler(add), {passive: true})
+    subButton.addEventListener('click', makeHandler(sub), {passive: true})
+    return [addButton, subButton]
+  }
+  fromButtons.append(...makeAddSub(fromSlot))
+  toButtons.append(...makeAddSub(toSlot))
+}
+// TODO: disable buttons when they won't work?
 
 const fromDateTime = document.createElement('div')
 const toDateTime = document.createElement('div')
@@ -310,7 +361,7 @@ summaryTable.appendChild(document.createElement('tr'))
   ))
 
 // TODO: fill tables
-// TODO: add attestation accuracy info
+// TODO: add attestation accuracy and reward info
 
 const detailsDiv = document.createElement('div')
 detailsDiv.id = 'details'
@@ -381,13 +432,13 @@ socket.on('perfDetails', data => {
   // TODO: add totals to summary table
 })
 
+// TODO: make select-all, select-none option for include work
+
+// TODO: make the sorting options for the columns work
+
 // TODO: add selector for subperiod sizes (instead of year/month/day)?
 
-// TODO: add copy button for addresses in minipoolsList, and copy for whole columns, and whole table?
-
-// TODO: add select-all, select-none option for include
-
-// TODO: add sorting options for the columns?
+// TODO: add copy for whole table?
 
 // TODO: add loading indication for details
 

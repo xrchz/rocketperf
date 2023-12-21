@@ -4,6 +4,8 @@ const body = document.querySelector('body')
 
 const toId = (s) => s.replace(/\s/,'-').replace(/%/,'percent')
 
+// TODO: store parts of the state (e.g: minipools, slot range) in URL query
+
 function formatUnits(wei, decimals) {
   const {val, neg} = wei < 0n ? {val: wei * -1n, neg: '-'} : {val: wei, neg: ''}
   const padded = val.toString().padStart(decimals, '0')
@@ -433,11 +435,17 @@ socket.on('perfDetails', data => {
           (totalMissed ? Math.round(performance * 10) * 10 : 'all')
           : 'nil'
         dayDiv.classList.add(`perf${performanceDecile}`)
-        Object.keys(dayObj).forEach(k => dayObj[k].reward = BigInt(dayObj[k].reward))
-        // TODO: exclude lines with 0 duties
-        const dutyTitle = (key) =>
+        const dayObjKeys = Object.keys(dayObj)
+        dayObjKeys.forEach(k => dayObj[k].reward = BigInt(dayObj[k].reward))
+        const dutyTitle = (key) => (
+          (dayObj[key].duties || dayObj[key].reward) &&
           `${dayObj[key].duties - dayObj[key].missed}/${dayObj[key].duties}: ${formatGwei(dayObj[key].reward)} gwei`
-        dayDiv.title = `A: ${dutyTitle('attestations')}\nP: ${dutyTitle('proposals')}\nS: ${dutyTitle('syncs')}`
+        )
+        const titleLines = dayObjKeys.flatMap(k => {
+            const t = dutyTitle(k)
+            return t ? [`${k[0].toUpperCase()}: ${t}`] : []
+          })
+        dayDiv.title = titleLines.join('\n')
         addTotals(dayObj)
       }
     }

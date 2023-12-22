@@ -53,6 +53,10 @@ entityEntryBox.addEventListener('change',
 const entityFailures = document.createElement('ul')
 entityFailures.id = 'entityFailures'
 
+const isIncluded = (a) =>
+  a.parentElement.parentElement
+    .querySelector('input[type="checkbox"]').checked
+
 const minipoolsList = document.createElement('table')
 minipoolsList.classList.add('hidden')
 const headings = ['Minipool', 'Node', 'Withdrawal', 'Validator', 'Include']
@@ -79,13 +83,13 @@ minipoolsList.appendChild(document.createElement('tr'))
       bDown.value = '⬇️'
       bDown.title = 'sort column descending'
       bCopy.value = '📋'
-      bCopy.title = 'copy unique column items'
+      bCopy.title = 'copy unique included column items'
       bCopy.addEventListener('click', () => {
         const columnText = Array.from(
           new Set(
             Array.from(
               minipoolsList.querySelectorAll(`td[headers~="${headerId}"] > a`)
-            ).map(a => a.innerText)
+            ).flatMap(a => isIncluded(a) ? [a.innerText] : [])
           ).values()
         ).join('\n')
         if (columnText.length)
@@ -95,7 +99,13 @@ minipoolsList.appendChild(document.createElement('tr'))
       buttons.forEach(b => b.type = 'button')
       if (h == 'Include') {
         const ch = document.createElement('input')
+        ch.id = 'include-all-checked'
         ch.type = 'checkbox'
+        ch.addEventListener('change', () => {
+          Array.from(
+            minipoolsList.querySelectorAll('input[type="checkbox"]')
+          ).forEach(e => e.checked = ch.checked)
+        })
         th.append(...buttons.toSpliced(-1, 1, ch))
       }
       else
@@ -106,6 +116,20 @@ minipoolsList.appendChild(document.createElement('tr'))
 Array.from(minipoolsList.children).forEach(
   r => r.classList.add('head')
 )
+
+function updateIncludeAllChecked() {
+  const boxes = Array.from(
+    minipoolsList.querySelectorAll('input[type="checkbox"]')
+  )
+  const checked = boxes.filter(e => e.checked)
+  const allChecked = document.getElementById('include-all-checked')
+  const numBoxes = boxes.length - 1
+  const numChecked = checked.length - allChecked.checked
+  allChecked.indeterminate = false
+  if (numChecked == 0) allChecked.checked = false
+  else if (numChecked == numBoxes) allChecked.checked = true
+  else allChecked.indeterminate = true
+}
 
 const slotSelectionDiv = document.createElement('div')
 const fromDateLabel = document.createElement('label')
@@ -181,11 +205,7 @@ slotSelectors.forEach(e =>
 
 const minipoolsInTable = () => Array.from(
   minipoolsList.querySelectorAll('td.minipool > a')
-).flatMap(a =>
-  a.parentElement.parentElement
-    .querySelector('input[type="checkbox"]').checked ?
-  [a.href.slice(-42)] : []
-)
+).flatMap(a => isIncluded(a) ? [a.href.slice(-42)] : [])
 
 const updatePerformanceDetails = () => {
   const fromValue = parseInt(fromSlot.value)
@@ -496,7 +516,8 @@ socket.on('minipools', minipools => {
     const sel = document.createElement('input')
     sel.type = 'checkbox'
     sel.checked = selected
-    sel.addEventListener('change', updatePerformanceDetails, {passive: true})
+    sel.addEventListener('change', updateIncludeAllChecked, {passive: true})
+    // TODO: updatePerformanceDetails when sel has changed after some delay to indicate changing has stopped?
     tr.append(
       ...[mpA, nodeA, wA, valA, sel].map((a, i) => {
         const td = document.createElement('td')
@@ -518,6 +539,7 @@ socket.on('minipools', minipools => {
     ...Array.from(minipoolsList.querySelectorAll('tr.head'))
   )
   minipoolsList.appendChild(frag)
+  updateIncludeAllChecked()
   if (minipools.length) {
     minipoolsList.classList.remove('hidden')
     updatePerformanceDetails()

@@ -50,7 +50,7 @@ div.dirRangeButtons.to {
 div.dirRangeButtons.from {
   margin-right: 1em;
 }
-#allSummaryTable > tr > td {
+:is(#allSummaryTable, #summaryTable) > tr > td {
   text-align: right;
 }
 div#footer {

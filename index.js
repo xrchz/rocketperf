@@ -402,6 +402,7 @@ allSummaryTable.appendChild(document.createElement('tr'))
   }))
 
 const summaryTable = document.createElement('table')
+summaryTable.id = 'summaryTable'
 summaryTable.classList.add('hidden')
 summaryTable.appendChild(document.createElement('tr'))
   .append(...dutyHeadings.map(h => {

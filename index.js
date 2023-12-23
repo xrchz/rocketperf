@@ -69,6 +69,30 @@ minipoolsList.appendChild(document.createElement('tr'))
       return th
     })
   )
+
+const stringCollator = new Intl.Collator()
+const numericCollator = new Intl.Collator(undefined, {numeric: true})
+const sortUp = collator => (a, b) => collator.compare(a.dataset.sortKey, b.dataset.sortKey)
+const sortDown = collator => (a, b) => collator.compare(b.dataset.sortKey, a.dataset.sortKey)
+function sortByColumn(compareFn, headerId) {
+  const rows = []
+  Array.from(
+    minipoolsList.querySelectorAll('tr')
+  ).forEach(row =>
+    row.classList.contains('head')
+    ? frag.appendChild(row)
+    : rows.push(row)
+  )
+  minipoolsList.replaceChildren(frag)
+  rows.forEach(row => {
+    const item = row.querySelector(`td[headers~="${headerId}"] > :is(a, input)`)
+    row.dataset.sortKey = item.tagName == 'A' ? item.innerText : item.checked.toString()
+  })
+  rows.sort(compareFn)
+  rows.forEach(row => delete row.dataset.sortKey)
+  minipoolsList.append(...rows)
+}
+
 minipoolsList.appendChild(document.createElement('tr'))
   .append(
     ...headings.map((h, i) => {
@@ -95,6 +119,9 @@ minipoolsList.appendChild(document.createElement('tr'))
         if (columnText.length)
           navigator.clipboard.writeText(columnText)
       }, {passive: true})
+      const collator = h == 'Validator' ? numericCollator : stringCollator
+      bUp.addEventListener('click', () => sortByColumn(sortUp(collator), headerId), {passive: true})
+      bDown.addEventListener('click', () => sortByColumn(sortDown(collator), headerId), {passive: true})
       const buttons = [bUp, bDown, bCopy]
       buttons.forEach(b => b.type = 'button')
       if (h == 'Include') {

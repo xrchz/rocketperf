@@ -2,7 +2,9 @@ const socket = io()
 const frag = document.createDocumentFragment()
 const body = document.querySelector('body')
 
-const toId = (s) => s.replace(/\s/,'-').replace(/%/,'percent')
+const idReplacements = new Map([['%', 'P'], ['(', 'L'], [')', 'R']])
+const toId = (s) => s.toLowerCase().replaceAll(
+  /\s|%|(|)/g, (x) => idReplacements.get(x) ?? '-')
 
 // TODO: store parts of the state (e.g: minipools, slot range) in URL query
 
@@ -373,21 +375,21 @@ const summaryHeadings = ['Assigned', 'Missed', 'Success Rate (%)', 'Net Reward (
 const summaryFromDuty = (h, d) => {
   if (h == summaryHeadings[0]) return d.duties
   if (h == summaryHeadings[1]) return d.missed
-  if (h == summaryHeadings[2]) return Math.round(100 * 100 * ((d.duties - d.missed) / d.duties)) / 100
+  if (h == summaryHeadings[2]) return d.duties
+    ? Math.round(100 * 100 * ((d.duties - d.missed) / d.duties)) / 100
+    : 100
   if (h == summaryHeadings[3]) return formatGwei(d.reward)
   throw new Error(`Unknown heading ${h}`)
 }
 const allSummaryTable = document.createElement('table')
 allSummaryTable.id = 'allSummaryTable'
-const summaryTable = document.createElement('table')
-summaryTable.classList.add('hidden')
 allSummaryTable.classList.add('hidden')
 const dutyHeadings = ['Attestations', 'Proposals', 'Syncs']
 allSummaryTable.appendChild(document.createElement('tr'))
   .append(...summaryHeadings.map(h => {
     const th = document.createElement('th')
     th.innerText = h
-    th.id = `th-${toId(h.toLowerCase())}`
+    th.id = `th-${toId(h)}`
     return th
   }))
 allSummaryTable.firstElementChild.classList.add('head')
@@ -399,29 +401,41 @@ allSummaryTable.appendChild(document.createElement('tr'))
     return td
   }))
 
+const summaryTable = document.createElement('table')
+summaryTable.classList.add('hidden')
 summaryTable.appendChild(document.createElement('tr'))
   .append(...dutyHeadings.map(h => {
     const th = document.createElement('th')
     th.innerText = h
     th.setAttribute('colspan', '4')
-    th.id = `th-${toId(h.toLowerCase())}`
+    th.id = `th-${toId(h)}`
     return th
   }))
-summaryTable.appendChild(document.createElement('tr'))
-  .append(...Array.from(summaryTable.firstElementChild.children).flatMap(h =>
+const summaryDutyHeadings = Array.from(
+  summaryTable.lastElementChild.children
+).flatMap(h =>
     summaryHeadings.map(h2 => {
       const th = document.createElement('th')
       th.innerText = h2
       th.headers = h.id
-      th.id = `th-${h.id.slice(3)}-${toId(h2.toLowerCase())}`
+      th.id = `th-${h.id.slice(3)}-${toId(h2)}`
       return th
     })
-  ))
+)
+summaryTable.appendChild(document.createElement('tr')).append(...summaryDutyHeadings)
 Array.from(summaryTable.children).forEach(
   r => r.classList.add('head')
 )
+const summaryDutyEntries = Array.from(
+  summaryTable.lastElementChild.children
+).map(h => {
+  const td = document.createElement('td')
+  td.headers = h.id
+  td.id = `td-${h.id.slice(3)}`
+  return td
+})
+summaryTable.appendChild(document.createElement('tr')).append(...summaryDutyEntries)
 
-// TODO: fill tables
 // TODO: add attestation accuracy and reward info
 
 const detailsDiv = document.createElement('div')
@@ -501,14 +515,23 @@ socket.on('perfDetails', data => {
   const allSummaryTotals = {...emptyDutyData}
   Object.values(totals).forEach(d => addTotal(allSummaryTotals, d))
   for (const h of summaryHeadings) {
-    const td = document.getElementById(`td-${toId(h.toLowerCase())}`)
+    const td = document.getElementById(`td-${toId(h)}`)
     td.innerText = summaryFromDuty(h, allSummaryTotals)
   }
-  if (allSummaryTotals.duties)
+  for (const [dh, duty] of Object.entries(totals)) {
+    for (const h of summaryHeadings) {
+      const td = document.getElementById(`td-${toId(dh)}-${toId(h)}`)
+      td.innerText = summaryFromDuty(h, duty)
+    }
+  }
+  if (allSummaryTotals.duties) {
     allSummaryTable.classList.remove('hidden')
-  else
+    summaryTable.classList.remove('hidden')
+  }
+  else {
     allSummaryTable.classList.add('hidden')
-  // TODO: add totals to summaryTable
+    summaryTable.classList.add('hidden')
+  }
 })
 
 // TODO: make select-all, select-none option for include work
@@ -519,7 +542,7 @@ socket.on('perfDetails', data => {
 
 // TODO: add copy for whole table?
 
-// TODO: add loading indication for details
+// TODO: add loading (and out-of-date) indication for results/details
 
 socket.on('minipools', minipools => {
   console.log(`Received minipools`)

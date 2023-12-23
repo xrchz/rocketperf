@@ -76,6 +76,7 @@ while (withdrawalAddressBlock < finalizedBlockNumber) {
 
 // TODO: addListener for NodeWithdrawalAddressSet
 
+// TODO: cache activation epochs (and rocketpool activation epochs for that matter)
 async function activationEpoch(validatorIndex) {
   const path = `/eth/v1/beacon/states/finalized/validators/${validatorIndex}`
   const url = new URL(path, beaconRpcUrl)
@@ -87,14 +88,14 @@ async function activationEpoch(validatorIndex) {
 }
 
 const validatorIdsToProcess = [
-  // '509045',
-  // '509048',
-  // '509049',
-  // '509076',
-  // '509077',
-  // '509644',
-  // '517312',
-  // '581781',
+  '509045',
+  '509048',
+  '509049',
+  '509076',
+  '509077',
+  '509644',
+  '517312',
+  '581781',
   '915834',
   '915835',
   '915836',
@@ -102,17 +103,74 @@ const validatorIdsToProcess = [
   '915838',
   '918039',
   '918040',
-  // '263489',
-  // '263491',
-  // '410932',
+  '263489',
+  '263491',
+  '410932',
   '583656',
   '583658',
   '583659',
+
+  // '178607', TODO: handle rocketpool activation epoch (not just beacon) in case of migrations
+  '299145',
+  '299563',
+  '315096',
+  '315416',
+  '331665',
+  '395350',
+  '396666',
+  '396667',
+  '405639',
+  '405712',
+  '409340',
+  '410810',
+  '410851',
+  '410896',
+  '411937',
+  '415621',
+  '466392',
+  '485042',
+  '485428',
+  '518517',
+  '879631',
+  '883986',
+  '890986',
+  '891017',
+  '893010',
+  '893011',
+  '893047',
+  '895461',
+  '895462',
+  '898190',
+  '898195',
+  '898198',
+  '902988',
+  '915547',
+  '932768',
+  '940859',
+  '940860',
+  '943025',
+  '943026',
+  '954862',
+  '968183',
+  '975220',
+  '1017625',
+  '1017762',
+  '1017767',
+  '1034429',
+  '1034438',
+  '1043986',
+  '1044502',
+  '1089033',
+  '1089163',
+  '1089178',
+  '1089365',
+  '1089776'
 ]
 
 // TODO: get everything already in the db + validatorIdsToProcess
 const validatorIdsToConsider = new Map()
 for (const validatorIndex of validatorIdsToProcess) {
+  log(`Getting activation epoch for ${validatorIndex}`)
   validatorIdsToConsider.set(validatorIndex, await activationEpoch(validatorIndex))
 }
 
@@ -127,7 +185,11 @@ let epoch = Math.min(
      )
 )
 
-log(`Getting data for epochs ${epoch} through ${finalizedEpoch}`)
+if (process.env.OVERRIDE_START_EPOCH)
+  epoch = parseInt(process.env.OVERRIDE_START_EPOCH)
+const finalEpoch = parseInt(process.env.OVERRIDE_FINAL_EPOCH) || finalizedEpoch
+
+log(`Getting data for epochs ${epoch} through ${finalEpoch}`)
 
 const rewardsOptionsForEpoch = (epoch) => ({
   method: 'POST',
@@ -139,7 +201,7 @@ const rewardsOptionsForEpoch = (epoch) => ({
   )
 })
 
-while (epoch <= finalizedEpoch) {
+while (epoch <= finalEpoch) {
   log(`Processing epoch ${epoch}`)
 
   const rewardsOptions = rewardsOptionsForEpoch(epoch)
@@ -358,16 +420,19 @@ while (epoch <= finalizedEpoch) {
   }
 
   epoch += 1
-  const updated = []
-  for (const validatorIndex of validatorIdsToConsider.keys()) {
-    const nextEpochKey = `${chainId}/validator/${validatorIndex}/nextEpoch`
-    if ((db.get(nextEpochKey) || 0) < epoch) {
-      updated.push(validatorIndex)
-      await db.put(nextEpochKey, epoch)
+  // TODO: store multiple ranges of collected epochs per validator?
+  if (!process.env.OVERRIDE_START_EPOCH) {
+    const updated = []
+    for (const validatorIndex of validatorIdsToConsider.keys()) {
+      const nextEpochKey = `${chainId}/validator/${validatorIndex}/nextEpoch`
+      if ((db.get(nextEpochKey) || 0) < epoch) {
+        updated.push(validatorIndex)
+        await db.put(nextEpochKey, epoch)
+      }
     }
+    if (updated.length)
+      log(`Updated nextEpoch to ${epoch} for ${updated}`)
   }
-  if (updated.length)
-    log(`Updated nextEpoch to ${epoch} for ${updated}`)
 }
 
 // TODO: add listener for new epochs

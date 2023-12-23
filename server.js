@@ -390,11 +390,10 @@ io.on('connection', socket => {
         const sync = db.get(`${chainId}/validator/${validatorIndex}/sync/${epoch}`)
         if (sync) {
           const syncs = result.syncs || {...emptyDutyData}
-          if (sync.rewards.length !== 32)
-            console.warn(`unexpected sync.rewards.length ${sync.rewards.length} for ${validatorIndex} at ${epoch}`)
-          syncs.duties += 32
+          syncs.duties += sync.rewards.length // may be < 32 if blocks were missed
           syncs.missed += sync.missed.length
-          syncs.rewards += sync.rewards.reduce((a, s) => a + BigInt(s), 0n)
+          syncs.reward += sync.rewards.reduce((a, s) => a + BigInt(s), 0n)
+          result.syncs = syncs
         }
       }
     }

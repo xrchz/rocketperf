@@ -187,6 +187,8 @@ while (epoch <= finalizedEpoch) {
     beaconRpcUrl
   )
   const syncValidators = await fetch(syncDutiesUrl).then(async res => {
+    if (res.status === 400 && await res.json().then(j => j.message.endsWith("not activated for Altair")))
+      return []
     if (res.status !== 200)
       throw new Error(`Got ${res.status} fetching sync duties for ${epoch}: ${await res.text()}`)
     const json = await res.json()
@@ -197,7 +199,7 @@ while (epoch <= finalizedEpoch) {
       const syncKey = `${chainId}/validator/${validatorIndex}/sync/${epoch}`
       const sync = db.get(syncKey) || {}
       if (!('position' in sync)) {
-        log(`Adding sync duty for epoch ${epoch} for validator ${selectedIndex}`)
+        log(`Adding sync duty for epoch ${epoch} for validator ${validatorIndex}`)
         sync.position = position
         sync.missed = []
         sync.rewards = []
@@ -274,9 +276,9 @@ while (epoch <= finalizedEpoch) {
             throw new Error(`Non-zero reward ${reward} but no sync object at ${syncKey}`)
           continue
         }
-        log(`Adding sync reward for ${searchSlot} for validator ${validator_index}`)
+        log(`Adding sync reward for ${searchSlot} for validator ${validator_index}: ${reward}`)
         sync.rewards.push(reward)
-        await db.push(syncKey)
+        await db.put(syncKey, sync)
       }
     }
 

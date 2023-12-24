@@ -7,7 +7,9 @@ import https from 'node:https'
 import { Server } from 'socket.io'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { db, log, provider, chainId, beaconRpcUrl,
+import { db, log, provider, chainId, beaconRpcUrl, nullAddress,
+         multicall, getIndexFromPubkey, getPubkeyFromIndex, getMinipoolByPubkey,
+         getRocketAddress, rocketMinipoolManager, minipoolAbi,
          timeSlotConvs, getFinalizedSlot, epochOfSlot, secondsPerSlot }
        from './lib.js'
 
@@ -46,80 +48,13 @@ server.listen(443)
 
 const {timeToSlot, slotToTime} = timeSlotConvs(chainId)
 
-const nullAddress = '0x'.padEnd(42, '0')
-
-const multicallContract = new ethers.Contract(
-  '0xeefBa1e63905eF1D7ACbA5a8513c70307C1cE441',
-  ['function aggregate((address,bytes)[]) view returns (uint256, bytes[])'],
-  provider)
-function multicall(calls) {
-  log(`entered multicall with ${calls.length} calls`)
-  const margs = []
-  const posts = []
-  for (const {contract, fn, args} of calls) {
-    const iface = contract.interface
-    const ff = iface.getFunction(fn)
-    const data = iface.encodeFunctionData(ff, args)
-    margs.push(contract.getAddress().then(addr => [addr, data]))
-    posts.push(res => iface.decodeFunctionResult(ff, res)[0])
-  }
-  return Promise.all(margs)
-    .then(calls => multicallContract.aggregate(calls))
-    .then(res => Array.from(res[1]).map((r, i) => posts[i](r)))
-}
-
-const rocketStorage = new ethers.Contract(
-  await provider.resolveName('rocketstorage.eth'),
-  ['function getAddress(bytes32 _key) view returns (address)'],
-  provider
-)
-log(`Rocket Storage: ${await rocketStorage.getAddress()}`)
-
-const getRocketAddress = name => rocketStorage['getAddress(bytes32)'](ethers.id(`contract.address${name}`))
-
-const rocketMinipoolManager = new ethers.Contract(
-  await getRocketAddress('rocketMinipoolManager'), [
-    'function getMinipoolExists(address) view returns (bool)',
-    'function getMinipoolByPubkey(bytes) view returns (address)',
-    'function getMinipoolPubkey(address) view returns (bytes)',
-    'function getNodeMinipoolCount(address) view returns (uint256)',
-    'function getNodeMinipoolAt(address, uint256) view returns (address)'
-  ], provider)
-
 const rocketNodeManager = new ethers.Contract(
   await getRocketAddress('rocketNodeManager'), [
     'function getNodeExists(address) view returns (bool)',
     'function getNodeWithdrawalAddress(address) view returns (address)'
   ], provider)
 
-log(`Minipool Manager: ${await rocketMinipoolManager.getAddress()}`)
 log(`Node Manager: ${await rocketNodeManager.getAddress()}`)
-
-const minipoolAbi = [
-  'function getNodeAddress() view returns (address)'
-]
-
-async function getIndexFromPubkey(pubkey) {
-  const path = `/eth/v1/beacon/states/head/validators/${pubkey}`
-  const url = new URL(path, beaconRpcUrl)
-  const response = await fetch(url)
-  if (response.status === 404)
-    return -1
-  if (response.status !== 200)
-    console.warn(`Unexpected response status getting ${pubkey} index: ${response.status}`)
-  return await response.json().then(j => j.data.index)
-}
-
-async function getPubkeyFromIndex(index) {
-  const path = `/eth/v1/beacon/states/head/validators/${index}`
-  const url = new URL(path, beaconRpcUrl)
-  const response = await fetch(url)
-  if (response.status === 404)
-    return null
-  if (response.status !== 200)
-    console.warn(`Unexpected response status getting ${index} pubkey: ${response.status}`)
-  return await response.json().then(j => j.data.validator.pubkey)
-}
 
 const isNumber = /^[1-9]\d*$/
 
@@ -218,7 +153,7 @@ async function lookupEntity(entity) {
       }
     }
     if (ethers.isHexString(s, 48)) {
-      minipoolAddress = await rocketMinipoolManager.getMinipoolByPubkey(s)
+      minipoolAddress = getMinipoolByPubkey(s)
       if (minipoolAddress != nullAddress) {
         log(`${s} exists as minipool pubkey`)
         const pubkey = s

@@ -1,8 +1,10 @@
 import 'dotenv/config'
 import { ethers } from 'ethers'
-import { db, provider, chainId, beaconRpcUrl, log,
-         timeSlotConvs, slotsPerEpoch, epochOfSlot,
-         getFinalizedSlot
+import { db, provider, chainId, beaconRpcUrl, log, multicall,
+         timeSlotConvs, slotsPerEpoch, epochOfSlot, minipoolAbi,
+         minipoolsByPubkeyCount, minipoolsByPubkey, minipoolCount,
+         incrementMinipoolsByPubkeyCount, getMinipoolByPubkey,
+         getFinalizedSlot, getPubkeyFromIndex, rocketMinipoolManager
        } from './lib.js'
 
 const {timeToSlot, slotToTime} = timeSlotConvs(chainId)
@@ -60,9 +62,9 @@ while (withdrawalAddressBlock < finalizedBlockNumber) {
   const max = Math.min(withdrawalAddressBlock + MAX_QUERY_RANGE, finalizedBlockNumber)
   console.log(`Processing withdrawal addresses ${min}...${max}`)
   const logs = await rocketStorage.queryFilter('NodeWithdrawalAddressSet', min, max)
-  for (const log of logs) {
-    const nodeAddress = log.args[0]
-    const withdrawalAddress = log.args[1]
+  for (const entry of logs) {
+    const nodeAddress = entry.args[0]
+    const withdrawalAddress = entry.args[1]
     await db.transaction(() => {
       const key = `${chainId}/withdrawalAddress/${withdrawalAddress}`
       const nodeAddresses = db.get(key) || new Set()
@@ -76,17 +78,96 @@ while (withdrawalAddressBlock < finalizedBlockNumber) {
 
 // TODO: addListener for NodeWithdrawalAddressSet
 
-// TODO: cache activation epochs (and rocketpool activation epochs for that matter)
-async function activationEpoch(validatorIndex) {
-  const path = `/eth/v1/beacon/states/finalized/validators/${validatorIndex}`
-  const url = new URL(path, beaconRpcUrl)
-  const res = await fetch(url)
-  const json = await res.json()
-  if (!(0 <= parseInt(json?.data?.validator?.activation_epoch)))
-    throw new Error(`Failed to get activation_epoch for ${validatorIndex}`)
-  return parseInt(json.data.validator.activation_epoch)
+const statusDissolved = 4n
+
+while (minipoolsByPubkeyCount < minipoolCount) {
+  const n = Math.min(MAX_QUERY_RANGE, minipoolCount - minipoolsByPubkeyCount)
+  const minipoolAddresses = await multicall(
+    Array(n).fill().map((_, i) => ({
+      contract: rocketMinipoolManager,
+      fn: 'getMinipoolAt',
+      args: [minipoolsByPubkeyCount + i]
+    }))
+  )
+  const pubkeys = await multicall(
+    minipoolAddresses.map(minipoolAddress => ({
+      contract: rocketMinipoolManager,
+      fn: 'getMinipoolPubkey',
+      args: [minipoolAddress]
+    }))
+  )
+  for (const [i, minipoolAddress] of minipoolAddresses.entries()) {
+    const pubkey = pubkeys[i]
+    const currentEntry = minipoolsByPubkey.get(pubkey)
+    if (currentEntry && currentEntry != minipoolAddress) {
+      const currentMinipool = new ethers.Contract(currentEntry, minipoolAbi, provider)
+      const pendingMinipool = new ethers.Contract(minipoolAddress, minipoolAbi, provider)
+      const currentStatus = await currentMinipool.getStatus()
+      const pendingStatus = await pendingMinipool.getStatus()
+      if (currentStatus == pendingStatus)
+        throw new Error(`Duplicate minipools with status ${currentStatus} for ${pubkey}: ${minipoolAddress} vs ${currentEntry}`)
+      const activeAddress = currentStatus == statusDissolved ? minipoolAddress :
+                            pendingStatus == statusDissolved ? currentEntry : null
+      if (!activeAddress)
+        throw new Error(`Duplicate minipools for ${pubkey} with neither dissolved: ${minipoolAddress} vs ${currentEntry}`)
+      log(`Found duplicate minipools for ${pubkey}: ${minipoolAddress} vs ${currentEntry}. Keeping ${activeAddress}.`)
+      minipoolsByPubkey.set(pubkey, activeAddress)
+    }
+    else
+      minipoolsByPubkey.set(pubkey, minipoolAddress)
+  }
+  incrementMinipoolsByPubkeyCount(n)
+  log(`Got pubkeys for ${minipoolsByPubkeyCount} minipools`)
+}
+await db.put(`${chainId}/minipoolsByPubkeyCount`, minipoolsByPubkeyCount)
+await db.put(`${chainId}/minipoolsByPubkey`, minipoolsByPubkey)
+
+// TODO: add listener for minipool added
+
+async function getActivationInfo(validatorIndex) {
+  const key = `${chainId}/validator/${validatorIndex}/activationInfo`
+  const activationInfo = db.get(key) ?? {}
+  let changed = false
+  if (!('beacon' in activationInfo)) {
+    const path = `/eth/v1/beacon/states/finalized/validators/${validatorIndex}`
+    const url = new URL(path, beaconRpcUrl)
+    const res = await fetch(url)
+    const json = await res.json()
+    if (!(0 <= parseInt(json?.data?.validator?.activation_epoch)))
+      throw new Error(`Failed to get activation_epoch for ${validatorIndex}`)
+    activationInfo.beacon = parseInt(json.data.validator.activation_epoch)
+    changed = true
+  }
+  if (!('promoted' in activationInfo)) {
+    const pubkey = await getPubkeyFromIndex(validatorIndex)
+    const minipoolAddress = getMinipoolByPubkey(pubkey)
+    const minipoolExists = await rocketMinipoolManager.getMinipoolExists(minipoolAddress)
+    if (!minipoolExists)
+      throw new Error(`Validator ${validatorIndex} (${pubkey}) has no corresponding minipool (${minipoolAddress})`)
+    const minipool = new ethers.Contract(minipoolAddress, minipoolAbi, provider)
+    if (await minipool.getVacant())
+      throw new Error(`Minipool ${minipoolAddress} (validator ${validatorIndex}) is vacant`)
+    const promotions = await minipool.queryFilter('MinipoolPromoted')
+    if (promotions.length) {
+      if (promotions.length !== 1)
+        console.warn(`Unexpectedly many promotions for ${minipoolAddress}: ${promotions.length}`)
+      const entry = promotions[0]
+      const block = await entry.getBlock()
+      const slot = timeToSlot(block.timestamp)
+      log(`Got promotion @ block ${block.number} (${slot}) for ${minipoolAddress} (${validatorIndex})`)
+      activationInfo.promoted = slot
+    }
+    else {
+      log(`Recording ${minipoolAddress} (${validatorIndex}) as not a solo migration`)
+      activationInfo.promoted = false
+    }
+    changed = true
+  }
+  if (changed) await db.put(key, activationInfo)
+  return activationInfo
 }
 
+// TODO: get these from all rocketpool minipools
 const validatorIdsToProcess = [
   '509045',
   '509048',
@@ -110,7 +191,7 @@ const validatorIdsToProcess = [
   '583658',
   '583659',
 
-  // '178607', TODO: handle rocketpool activation epoch (not just beacon) in case of migrations
+  '178607',
   '299145',
   '299563',
   '315096',
@@ -167,11 +248,19 @@ const validatorIdsToProcess = [
   '1089776'
 ]
 
+const epochFromActivationInfo = activationInfo =>
+  activationInfo.promoted ?
+    epochOfSlot(activationInfo.promoted) :
+    activationInfo.beacon
+
 // TODO: get everything already in the db + validatorIdsToProcess
 const validatorIdsToConsider = new Map()
 for (const validatorIndex of validatorIdsToProcess) {
   log(`Getting activation epoch for ${validatorIndex}`)
-  validatorIdsToConsider.set(validatorIndex, await activationEpoch(validatorIndex))
+  validatorIdsToConsider.set(
+    validatorIndex,
+    epochFromActivationInfo(await getActivationInfo(validatorIndex))
+  )
 }
 
 const finalizedEpoch = epochOfSlot(finalizedSlot - 1)

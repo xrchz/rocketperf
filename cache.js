@@ -310,7 +310,7 @@ while (epoch <= finalEpoch) {
         const syncKey = `${chainId}/validator/${validatorIndex}/sync/${epoch}`
         const sync = db.get(syncKey)
         if (sync) {
-          if (!syncBits[sync.position]) {
+          if (!syncBits[sync.position] && !sync.missed.includes(searchSlot)) {
             sync.missed.push(searchSlot)
             await db.put(syncKey, sync)
           }
@@ -338,9 +338,11 @@ while (epoch <= finalEpoch) {
             throw new Error(`Non-zero reward ${reward} but no sync object at ${syncKey}`)
           continue
         }
-        log(`Adding sync reward for ${searchSlot} for validator ${validator_index}: ${reward}`)
-        sync.rewards.push(reward)
-        await db.put(syncKey, sync)
+        if (sync.rewards.every(({slot}) => slot != searchSlot)) {
+          log(`Adding sync reward for ${searchSlot} for validator ${validator_index}: ${reward}`)
+          sync.rewards.push({slot: searchSlot, reward})
+          await db.put(syncKey, sync)
+        }
       }
     }
 

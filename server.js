@@ -392,7 +392,7 @@ io.on('connection', socket => {
           const syncs = result.syncs || {...emptyDutyData}
           syncs.duties += sync.rewards.length // may be < 32 if blocks were missed
           syncs.missed += sync.missed.length
-          syncs.reward += sync.rewards.reduce((a, s) => a + BigInt(s), 0n)
+          syncs.reward += sync.rewards.reduce((a, {reward}) => a + BigInt(reward), 0n)
           result.syncs = syncs
         }
       }

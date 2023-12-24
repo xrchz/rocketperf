@@ -280,26 +280,30 @@ const finalEpoch = parseInt(process.env.OVERRIDE_FINAL_EPOCH) || finalizedEpoch
 
 log(`Getting data for epochs ${epoch} through ${finalEpoch}`)
 
-const rewardsOptionsForEpoch = (epoch) => ({
+const getValidatorIdsToConsiderForEpoch = (epoch) => new Set(
+  Array.from(validatorIdsToConsider.entries()).flatMap(
+    ([id, actEp]) => actEp <= epoch ? [id] : []
+  )
+)
+
+const rewardsOptionsForEpoch = (validatorIdsToConsiderForEpoch) => ({
   method: 'POST',
   headers: {'Content-Type': 'application/json'},
-  body: JSON.stringify(
-    Array.from(validatorIdsToConsider.entries()).flatMap(
-      ([id, actEp]) => actEp <= epoch ? [id] : []
-    )
-  )
+  body: JSON.stringify(Array.from(validatorIdsToConsiderForEpoch.keys()))
 })
 
 while (epoch <= finalEpoch) {
   log(`Processing epoch ${epoch}`)
 
-  const rewardsOptions = rewardsOptionsForEpoch(epoch)
+  const validatorIdsToConsiderForEpoch = getValidatorIdsToConsiderForEpoch(epoch)
 
-  if (rewardsOptions.body === '[]') {
+  if (!validatorIdsToConsiderForEpoch.size) {
     console.warn(`${epoch} has no relevant active validators`)
     epoch += 1
     continue
   }
+
+  const rewardsOptions = rewardsOptionsForEpoch(validatorIdsToConsiderForEpoch)
 
   const firstSlotInEpoch = epoch * slotsPerEpoch
 
@@ -317,7 +321,7 @@ while (epoch <= finalEpoch) {
   })
   for (const {index, slot, validators} of committees) {
     for (const [position, selectedIndex] of validators.entries()) {
-      if (validatorIdsToConsider.has(selectedIndex)) {
+      if (validatorIdsToConsiderForEpoch.has(selectedIndex)) {
         const attestationKey = `${chainId}/validator/${selectedIndex}/attestation/${epoch}`
         const attestation = db.get(attestationKey) || {}
         if (!('position' in attestation)) {
@@ -346,7 +350,7 @@ while (epoch <= finalEpoch) {
     return json.data.validators
   })
   for (const [position, validatorIndex] of syncValidators.entries()) {
-    if (validatorIdsToConsider.has(validatorIndex)) {
+    if (validatorIdsToConsiderForEpoch.has(validatorIndex)) {
       const syncKey = `${chainId}/validator/${validatorIndex}/sync/${epoch}`
       const sync = db.get(syncKey) || {}
       if (!('position' in sync)) {
@@ -381,7 +385,7 @@ while (epoch <= finalEpoch) {
     for (const {aggregation_bits, data: {slot, index, beacon_block_root, source, target}} of attestations) {
       const attestedBits = hexStringToBitlist(aggregation_bits)
       const attestationEpoch = epochOfSlot(parseInt(slot))
-      for (const validatorIndex of validatorIdsToConsider.keys()) {
+      for (const validatorIndex of validatorIdsToConsiderForEpoch.keys()) {
         const attestationKey = `${chainId}/validator/${validatorIndex}/attestation/${attestationEpoch}`
         const attestation = db.get(attestationKey)
         if (attestation?.slot == slot && attestation.index == index && !(attestation.attested?.slot < searchSlot)) {
@@ -395,7 +399,7 @@ while (epoch <= finalEpoch) {
     }
     if (blockData.sync_aggregate) {
       const syncBits = hexStringToBitvector(blockData.sync_aggregate.sync_committee_bits)
-      for (const validatorIndex of validatorIdsToConsider.keys()) {
+      for (const validatorIndex of validatorIdsToConsiderForEpoch.keys()) {
         const syncKey = `${chainId}/validator/${validatorIndex}/sync/${epoch}`
         const sync = db.get(syncKey)
         if (sync) {
@@ -488,7 +492,7 @@ while (epoch <= finalEpoch) {
     return json.data
   })
   for (const {validator_index, slot} of proposals) {
-    if (validatorIdsToConsider.has(validator_index)) {
+    if (validatorIdsToConsiderForEpoch.has(validator_index)) {
       const proposalKey = `${chainId}/validator/${validator_index}/proposal/${slot}`
       const proposal = db.get(proposalKey) || {}
       if (!('reward' in proposal)) {
@@ -514,7 +518,7 @@ while (epoch <= finalEpoch) {
   // TODO: store multiple ranges of collected epochs per validator?
   if (!process.env.OVERRIDE_START_EPOCH) {
     const updated = []
-    for (const validatorIndex of validatorIdsToConsider.keys()) {
+    for (const validatorIndex of validatorIdsToConsiderForEpoch.keys()) {
       const nextEpochKey = `${chainId}/validator/${validatorIndex}/nextEpoch`
       if ((db.get(nextEpochKey) || 0) < epoch) {
         updated.push(validatorIndex)

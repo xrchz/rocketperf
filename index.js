@@ -48,7 +48,7 @@ entityEntryBox.rows = 6
 entityEntryBox.autocomplete = 'on'
 
 entityEntryBox.addEventListener('change',
-  () => socket.volatile.emit('entities', entityEntryBox.value),
+  () => socket.emit('entities', entityEntryBox.value),
   {passive: true}
 )
 
@@ -189,8 +189,6 @@ socket.emit('slotRangeLimits', [])
 ;[fromSlot, toSlot].forEach(e => {
   e.type = 'number'
   e.dataset.prevValue = e.value
-  e.min = 0
-  // TODO: update min and max when changing slotRangeLimits -- or just use these instead of that object
 })
 ;[fromDate, fromTime, fromSlot].forEach(e => e.dataset.dir = 'from')
 ;[toDate, toTime, toSlot].forEach(e => e.dataset.dir = 'to')
@@ -215,17 +213,13 @@ toTimeLabel.append(toTime)
 
 const thisUrl = new URL(window.location)
 
-;[fromSlot, toSlot].forEach(e => {
-  const slot = thisUrl.searchParams.get(`${e.dataset.dir}Slot`)
-  if ((slot || slot === 0) && e.value != slot) {
-    e.value = slot
-    e.dispatchEvent(new Event('change'))
-  }
-})
-
 const minipoolsInTable = () => Array.from(
   minipoolsList.querySelectorAll('td.minipool > a')
 ).flatMap(a => isIncluded(a) ? [a.href.slice(-42)] : [])
+
+const validatorIndicesInTable = () => Array.from(
+  minipoolsList.querySelectorAll('td.validator > a')
+).flatMap(a => isIncluded(a) ? [a.innerText] : [])
 
 const updatePerformanceDetails = () => {
   const fromValue = parseInt(fromSlot.value)
@@ -275,16 +269,32 @@ async function updateSlotRange() {
     return
   }
 
-  if (fromNew != fromOld || toNew != toOld) {
-    console.log(`Updating ${fromOld} - ${toOld} to ${fromNew} - ${toNew}`)
-    fromSlot.value = fromNew
-    toSlot.value = toNew
-    fromSlot.dataset.prevValue = fromSlot.value
-    toSlot.dataset.prevValue = toSlot.value
-    thisUrl.searchParams.set('fromSlot', fromNew)
-    thisUrl.searchParams.set('toSlot', toNew)
+  fromSlot.min = slotRangeLimits.min
+  fromSlot.max = toNew
+  toSlot.min = fromNew
+  toSlot.max = slotRangeLimits.max
+
+  const rangeChanged = fromNew != fromOld || toNew != toOld
+
+  if (rangeChanged || slotRangeLimits.validatorsChanged) {
+    if (rangeChanged) {
+      console.log(`Updating ${fromOld} - ${toOld} to ${fromNew} - ${toNew}`)
+      fromSlot.value = fromNew
+      toSlot.value = toNew
+      fromSlot.dataset.prevValue = fromSlot.value
+      toSlot.dataset.prevValue = toSlot.value
+      thisUrl.searchParams.set('fromSlot', fromNew)
+      thisUrl.searchParams.set('toSlot', toNew)
+    }
+    if (slotRangeLimits.validatorsChanged) {
+      thisUrl.searchParams.delete('v')
+      validatorIndicesInTable().forEach(i =>
+        thisUrl.searchParams.append('v', i)
+      )
+    }
     window.history.pushState(null, '', thisUrl)
     updatePerformanceDetails()
+    delete slotRangeLimits.validatorsChanged
   }
   else {
     console.log(`Unchanged (ignored): ${fromOld} - ${toOld} to ${fromNew} - ${toNew}`)
@@ -654,9 +664,13 @@ socket.on('minipools', minipools => {
     sel.type = 'checkbox'
     sel.checked = selected
     sel.addEventListener('change', updateIncludeAllChecked, {passive: true})
-    // TODO: when sel has changed (after some delay to indicate changing has stopped?)
-    // - updatePerformanceDetails
-    // - slotRangeLimits
+    sel.addEventListener('change',
+      () => {
+        slotRangeLimits.validatorsChanged = true
+        socket.volatile.emit('slotRangeLimits', validatorIndicesInTable())
+      },
+      {passive: true}
+    )
     tr.append(
       ...[mpA, nodeA, wA, valA, sel].map((a, i) => {
         const td = document.createElement('td')
@@ -681,9 +695,9 @@ socket.on('minipools', minipools => {
   updateIncludeAllChecked()
   if (minipools.length) {
     minipoolsList.classList.remove('hidden')
+    slotRangeLimits.validatorsChanged = true
     socket.volatile.emit('slotRangeLimits', minipools.flatMap(({validatorIndex, selected}) =>
       selected ? [validatorIndex] : []))
-    updatePerformanceDetails()
   }
   else minipoolsList.classList.add('hidden')
 })
@@ -729,3 +743,17 @@ body.append(
   detailsDiv,
   footerDiv
 )
+
+const initialUrlIndices = thisUrl.searchParams.getAll('v')
+if (initialUrlIndices.length) {
+  entityEntryBox.value = initialUrlIndices.join('\n')
+  entityEntryBox.dispatchEvent(new Event('change'))
+}
+
+;[fromSlot, toSlot].forEach(e => {
+  const slot = thisUrl.searchParams.get(`${e.dataset.dir}Slot`)
+  if ((slot || slot === 0) && e.value != slot) {
+    e.value = slot
+    e.dispatchEvent(new Event('change'))
+  }
+})

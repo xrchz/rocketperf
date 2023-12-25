@@ -161,6 +161,7 @@ function updateIncludeAllChecked() {
 }
 
 const slotSelectionDiv = document.createElement('div')
+slotSelectionDiv.id = 'slotSelection'
 const fromDateLabel = document.createElement('label')
 const fromDate = document.createElement('input')
 const fromTimeLabel = document.createElement('label')
@@ -176,15 +177,7 @@ const toSlotLabel = document.createElement('label')
 const toSlot = document.createElement('input')
 ;[fromSlotLabel, toSlotLabel].forEach(e => e.classList.add('slotLabel'))
 const slotRangeLimits = {min: 0, max: Infinity}
-const slotSelectors = new Map()
-slotSelectors.set('fromDate', fromDate)
-slotSelectors.set('fromTime', fromTime)
-slotSelectors.set('toDate', toDate)
-slotSelectors.set('toTime', toTime)
-slotSelectors.set('fromSlot', fromSlot)
-slotSelectors.set('toSlot', toSlot)
-
-slotSelectionDiv.id = 'slotSelection'
+socket.emit('slotRangeLimits', [])
 
 // TODO: add free-form text selectors for times too?
 
@@ -195,7 +188,9 @@ slotSelectionDiv.id = 'slotSelection'
 })
 ;[fromSlot, toSlot].forEach(e => {
   e.type = 'number'
+  e.dataset.prevValue = e.value
   e.min = 0
+  // TODO: update min and max when changing slotRangeLimits -- or just use these instead of that object
 })
 ;[fromDate, fromTime, fromSlot].forEach(e => e.dataset.dir = 'from')
 ;[toDate, toTime, toSlot].forEach(e => e.dataset.dir = 'to')
@@ -218,20 +213,15 @@ toDateLabel.append(
 )
 toTimeLabel.append(toTime)
 
-const slotSelectionHandler = (e) => {
-  const dir = e.target.dataset.dir
-  const type = e.target.type
-  const otherType = type === 'time' ? 'Date' : type === 'date' ? 'Time' : null
-  socket.volatile.emit('setSlot',
-    {dir, type, value: e.target.value,
-     other: otherType && slotSelectors.get(`${dir}${otherType}`).value
-    }
-  )
-}
+const thisUrl = new URL(window.location)
 
-slotSelectors.forEach(e =>
-  e.addEventListener('change', slotSelectionHandler, {passive: true})
-)
+;[fromSlot, toSlot].forEach(e => {
+  const slot = thisUrl.searchParams.get(`${e.dataset.dir}Slot`)
+  if ((slot || slot === 0) && e.value != slot) {
+    e.value = slot
+    e.dispatchEvent(new Event('change'))
+  }
+})
 
 const minipoolsInTable = () => Array.from(
   minipoolsList.querySelectorAll('td.minipool > a')
@@ -242,48 +232,137 @@ const updatePerformanceDetails = () => {
   const toValue = parseInt(toSlot.value)
   const minipools = minipoolsInTable()
   if (0 <= fromValue && fromValue <= toValue && minipools.length) {
+    console.log(`Asking for perfDetails ${fromValue} - ${toValue}`)
     socket.volatile.emit('perfDetails', fromValue, toValue, minipools)
   }
+  else {
+    console.warn(`Rejected perfDetails ${fromValue} - ${toValue}`)
+  }
 }
 
-function ensureValidRange() {
-  const fromOld = fromSlot.value, toOld = toSlot.value
-  if (!(parseInt(fromSlot.value) <= parseInt(toSlot.value))) {
-    if (!fromSlot.value) { toSlot.value = fromSlot.value }
-    toSlot.value = fromSlot.value
+async function updateSlotRange() {
+  const fromOld = fromSlot.dataset.prevValue
+  const toOld = toSlot.dataset.prevValue
+  let [fromNew, toNew] = [fromSlot.value, toSlot.value].map(x => parseInt(x))
+
+  if (isNaN(fromNew) || fromNew < slotRangeLimits.min)
+    fromNew = slotRangeLimits.min
+
+  if (isNaN(toNew) || slotRangeLimits.max < toNew)
+    toNew = slotRangeLimits.max
+
+  if (!(fromNew <= toNew))
+    [toNew, fromNew] = [fromNew, toNew]
+
+  await Promise.all(
+    [{slot: fromNew, dateInput: fromDate, timeInput: fromTime},
+     {slot: toNew, dateInput: toDate, timeInput: toTime}].map(
+       ({slot, dateInput, timeInput}) =>
+       new Promise(resolve =>
+         socket.emit('slotToTime', slot,
+           ({date, time}) => {
+             dateInput.value = date
+             timeInput.value = time
+             resolve()
+           }
+         )
+       )
+     )
+  )
+
+  if (!(0 <= fromNew && 0 <= toNew)) {
+    console.error(`Bad slot range ${fromNew} - ${toNew}, from ${fromOld} - ${toOld}`)
+    return
   }
-  let changed = false
-  if (fromOld != fromSlot.value && !isNaN(parseInt(fromSlot.value))) {
-    fromSlot.dispatchEvent(new Event('change'))
-    changed = true
+
+  if (fromNew != fromOld || toNew != toOld) {
+    console.log(`Updating ${fromOld} - ${toOld} to ${fromNew} - ${toNew}`)
+    fromSlot.value = fromNew
+    toSlot.value = toNew
+    fromSlot.dataset.prevValue = fromSlot.value
+    toSlot.dataset.prevValue = toSlot.value
+    thisUrl.searchParams.set('fromSlot', fromNew)
+    thisUrl.searchParams.set('toSlot', toNew)
+    window.history.pushState(null, '', thisUrl)
+    updatePerformanceDetails()
   }
-  if (toOld != toSlot.value && !isNaN(parseInt(toSlot.value))) {
-    toSlot.dispatchEvent(new Event('change'))
-    changed = true
+  else {
+    console.log(`Unchanged (ignored): ${fromOld} - ${toOld} to ${fromNew} - ${toNew}`)
   }
-  return changed
 }
 
-socket.on('setSlot', (key, value) => {
-  const elt = slotSelectors.get(key)
-  const oldValue = elt.value
-  elt.value = value
-  if (key.endsWith('Slot')) {
-    if (oldValue !== value && !ensureValidRange())
-      updatePerformanceDetails()
-  }
-})
+// TODO: handle popstate event on window and set slots accordingly
+
+const timeSelectionHandler = (e) => {
+  const dir = e.target.dataset.dir
+  const type = e.target.type
+  const otherType = type === 'time' ? 'date' : 'time'
+  const value = e.target.value
+  const other = slotSelectionDiv.querySelector(`input[type="${otherType}"][data-dir="${dir}"]`)
+  const datestring = type === 'time' ? `${other}T${value}` : `${value}T${other}`
+  const time = (new Date(datestring)).getTime() / 1000
+  const slotInput = slotSelectionDiv.querySelector(`input[type="number"][data-dir="${dir}"]`)
+  socket.emit('timeToSlot', time, (slot) => {
+    slotInput.value = slot
+    updateSlotRange()
+  })
+}
+
+;[fromDate, toDate, fromTime, toTime].forEach(e =>
+  e.addEventListener('change', timeSelectionHandler, {passive: true})
+)
+
+;[fromSlot, toSlot].forEach(e =>
+  e.addEventListener('change', updateSlotRange, {passive: true})
+)
 
 const rangeButtons = document.createElement('div')
 rangeButtons.id = 'fullRangeButtons'
 rangeButtons.classList.add('rangeButtons')
+
+async function calculateSlotRange(period) {
+  fromSlot.dataset.prevValue = fromSlot.value
+  toSlot.dataset.prevValue = toSlot.value
+  const date = new Date()
+  fromSlot.value = slotRangeLimits.min
+  toSlot.value = slotRangeLimits.max
+  if (period === 'year') {
+    date.setMonth(0, 1)
+    date.setHours(0, 0, 0, 0)
+  }
+  else if (period === 'month') {
+    date.setDate(1)
+    date.setHours(0, 0, 0, 0)
+  }
+  else if (period === 'week') {
+    date.setDate(date.getDate() - date.getDay())
+    date.setHours(0, 0, 0, 0)
+  }
+  else if (period === 'today') {
+    date.setHours(0, 0, 0, 0)
+  }
+  else if (period === 'hour') {
+    date.setMinutes(0, 0, 0)
+  }
+  if (period !== 'time') {
+    const time = date.getTime() / 1000
+    await new Promise(resolve => {
+      socket.emit('timeToSlot', time, (slot) => {
+        fromSlot.value = slot
+        resolve()
+      })
+    })
+  }
+  await updateSlotRange()
+}
 
 const makeButton = (v) => {
   const b = document.createElement('input')
   b.type = 'button'
   b.value = v
   b.addEventListener('click', () =>
-    socket.volatile.emit('setSlotRange', v.split(/\s/).at(-1).toLowerCase()))
+    calculateSlotRange(v.split(/\s/).at(-1).toLowerCase())
+  )
   return b
 }
 
@@ -303,8 +382,10 @@ rangeButtons.append(
   lastHourButton
 )
 
-// TODO: add option to select minimum activated slot for selected validators /
-// make the minimum fromSlot be this
+// TODO: server sends "update minimum/maximum slot" messages whenever finalized increases?
+
+// TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.
+// TODO: add tooltips to add/sub buttons
 
 const fromButtons = document.createElement('div')
 const toButtons = document.createElement('div')
@@ -536,15 +617,19 @@ socket.on('perfDetails', data => {
   }
 })
 
-// TODO: make select-all, select-none option for include work
+// TODO: add loading (and out-of-date) indication for results/details
 
-// TODO: make the sorting options for the columns work
+// TODO: add decoration to days with proposals
+
+// TODO: list proposal slots in day title
 
 // TODO: add selector for subperiod sizes (instead of year/month/day)?
 
 // TODO: add copy for whole table?
 
-// TODO: add loading (and out-of-date) indication for results/details
+// TODO: add NO portion of rewards separately from validator rewards? (need to track commission and borrow)
+
+// TODO: look into execution layer rewards too? probably ask for more money to implement that
 
 socket.on('minipools', minipools => {
   console.log(`Received minipools`)
@@ -569,7 +654,9 @@ socket.on('minipools', minipools => {
     sel.type = 'checkbox'
     sel.checked = selected
     sel.addEventListener('change', updateIncludeAllChecked, {passive: true})
-    // TODO: updatePerformanceDetails when sel has changed after some delay to indicate changing has stopped?
+    // TODO: when sel has changed (after some delay to indicate changing has stopped?)
+    // - updatePerformanceDetails
+    // - slotRangeLimits
     tr.append(
       ...[mpA, nodeA, wA, valA, sel].map((a, i) => {
         const td = document.createElement('td')
@@ -604,7 +691,7 @@ socket.on('minipools', minipools => {
 socket.on('slotRangeLimits', ({min, max}) => {
   slotRangeLimits.min = min
   slotRangeLimits.max = max
-  // TODO: update slot inputs to conform to range
+  updateSlotRange()
 })
 
 socket.on('unknownEntities', entities => {

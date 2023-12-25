@@ -186,16 +186,11 @@ async function lookupEntity(entity) {
   return {entity, values}
 }
 
-function setSlot(socket, dir, slot) {
-  const keySlot = `${dir}Slot`
-  const keyDate = `${dir}Date`
-  const keyTime = `${dir}Time`
-  const datestring = (new Date(slotToTime(slot) * 1000)).toISOString()
+function dateToDateTime(theDate) {
+  const datestring = theDate.toISOString()
   const date = datestring.slice(0, 10)
   const time = datestring.slice(11, 11 + 8)
-  socket.emit('setSlot', keySlot, slot)
-  socket.emit('setSlot', keyDate, date)
-  socket.emit('setSlot', keyTime, time)
+  return {date, time}
 }
 
 const emptyDutyData = { duties: 0, missed: 0, reward: 0n }
@@ -235,8 +230,8 @@ io.on('connection', socket => {
   })
 
   socket.on('slotRangeLimits', async validatorIndices => {
-    let min = Infinity
     const max = await getFinalizedSlot()
+    let min = max
     for (const validatorIndex of validatorIndices) {
       const activationInfo = db.get(`${chainId}/validator/${validatorIndex}/activationInfo`)
       if (!activationInfo) {
@@ -252,51 +247,14 @@ io.on('connection', socket => {
     socket.emit('slotRangeLimits', {min, max})
   })
 
-  socket.on('setSlot', async ({dir, type, value, other}) => {
-    // TODO: maybe need to compare against previous value, to assess the intention of the change better
-    const currentSlot = await getFinalizedSlot()
-    let slot
-    if (type === 'number') {
-      slot = parseInt(value) || (dir === 'to' ? currentSlot : 0)
-    }
-    else {
-      const datestring = type === 'date' ? `${value}T${other}` : `${other}T${value}`
-      let time = (new Date(datestring)).getTime()
-      time = time ? time / 1000 : slotToTime(dir === 'to' ? currentSlot : 0)
-      slot = timeToSlot(time)
-    }
-    slot = Math.max(0, Math.min(slot, currentSlot))
-    setSlot(socket, dir, slot)
+  socket.on('timeToSlot', (time, callback) => {
+    const slot = timeToSlot(time)
+    callback(slot)
   })
 
-  socket.on('setSlotRange', async period => {
-    const date = new Date()
-    let fromSlot = 0
-    const toSlot = await getFinalizedSlot()
-    setSlot(socket, 'from', fromSlot)
-    setSlot(socket, 'to', toSlot)
-    if (period === 'year') {
-      date.setMonth(0, 1)
-      date.setHours(0, 0, 0, 0)
-    }
-    else if (period === 'month') {
-      date.setDate(1)
-      date.setHours(0, 0, 0, 0)
-    }
-    else if (period === 'week') {
-      date.setDate(date.getDate() - date.getDay())
-      date.setHours(0, 0, 0, 0)
-    }
-    else if (period === 'today') {
-      date.setHours(0, 0, 0, 0)
-    }
-    else if (period === 'hour') {
-      date.setMinutes(0, 0, 0)
-    }
-    if (period !== 'time') {
-      fromSlot = timeToSlot(date.getTime() / 1000)
-      if (fromSlot) setSlot(socket, 'from', fromSlot)
-    }
+  socket.on('slotToTime', (slot, callback) => {
+    const date = new Date(slotToTime(slot) * 1000)
+    callback(dateToDateTime(date))
   })
 
   socket.on('perfDetails', async (fromSlot, toSlot, minipoolAddresses) => {

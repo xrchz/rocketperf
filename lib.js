@@ -110,8 +110,11 @@ export function multicall(calls) {
 export let minipoolsByPubkeyCount = db.get(`${chainId}/minipoolsByPubkeyCount`) ?? 0
 export const incrementMinipoolsByPubkeyCount = n => minipoolsByPubkeyCount += n
 export const minipoolsByPubkey = db.get(`${chainId}/minipoolsByPubkey`) ?? new Map()
-export let minipoolCount = parseInt(
-  await rocketMinipoolManager.getMinipoolCount({blockTag: 'finalized'})
-)
+export let minipoolCount
+export const updateMinipoolCount = async () => {
+  minipoolCount = parseInt(
+    await rocketMinipoolManager.getMinipoolCount({blockTag: 'finalized'})
+  )
+}
 export const getMinipoolByPubkey = pubkey =>
   minipoolsByPubkey.get(pubkey) ?? nullAddress

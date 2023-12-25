@@ -3,8 +3,9 @@ import { ethers } from 'ethers'
 import { db, provider, chainId, beaconRpcUrl, log, multicall,
          timeSlotConvs, slotsPerEpoch, epochOfSlot, minipoolAbi,
          minipoolsByPubkeyCount, minipoolsByPubkey, minipoolCount,
-         incrementMinipoolsByPubkeyCount, getMinipoolByPubkey,
-         getFinalizedSlot, getPubkeyFromIndex, rocketMinipoolManager
+         updateMinipoolCount, incrementMinipoolsByPubkeyCount,
+         getMinipoolByPubkey, getFinalizedSlot, getPubkeyFromIndex,
+         rocketMinipoolManager
        } from './lib.js'
 
 const {timeToSlot, slotToTime} = timeSlotConvs(chainId)
@@ -48,81 +49,89 @@ const rocketStorage = new ethers.Contract(
 const rocketStorageGenesisBlockByChain = {
   1: 13325233
 }
+const statusDissolved = 4n
 
 const rocketStorageGenesisBlock = rocketStorageGenesisBlockByChain[chainId]
-
-const finalizedBlockNumber = await provider.getBlock('finalized').then(b => b.number)
-const finalizedSlot = await getFinalizedSlot()
 
 let withdrawalAddressBlock = db.get(`${chainId}/withdrawalAddressBlock`)
 if (!withdrawalAddressBlock) withdrawalAddressBlock = rocketStorageGenesisBlock
 
-while (withdrawalAddressBlock < finalizedBlockNumber) {
-  const min = withdrawalAddressBlock
-  const max = Math.min(withdrawalAddressBlock + MAX_QUERY_RANGE, finalizedBlockNumber)
-  console.log(`Processing withdrawal addresses ${min}...${max}`)
-  const logs = await rocketStorage.queryFilter('NodeWithdrawalAddressSet', min, max)
-  for (const entry of logs) {
-    const nodeAddress = entry.args[0]
-    const withdrawalAddress = entry.args[1]
-    await db.transaction(() => {
-      const key = `${chainId}/withdrawalAddress/${withdrawalAddress}`
-      const nodeAddresses = db.get(key) || new Set()
-      nodeAddresses.add(nodeAddress)
-      db.put(key, nodeAddresses)
-    })
-  }
-  withdrawalAddressBlock = max
-  await db.put(`${chainId}/withdrawalAddressBlock`, withdrawalAddressBlock)
-}
-
-// TODO: addListener for NodeWithdrawalAddressSet
-
-const statusDissolved = 4n
-
-while (minipoolsByPubkeyCount < minipoolCount) {
-  const n = Math.min(MAX_QUERY_RANGE, minipoolCount - minipoolsByPubkeyCount)
-  const minipoolAddresses = await multicall(
-    Array(n).fill().map((_, i) => ({
-      contract: rocketMinipoolManager,
-      fn: 'getMinipoolAt',
-      args: [minipoolsByPubkeyCount + i]
-    }))
-  )
-  const pubkeys = await multicall(
-    minipoolAddresses.map(minipoolAddress => ({
-      contract: rocketMinipoolManager,
-      fn: 'getMinipoolPubkey',
-      args: [minipoolAddress]
-    }))
-  )
-  for (const [i, minipoolAddress] of minipoolAddresses.entries()) {
-    const pubkey = pubkeys[i]
-    const currentEntry = minipoolsByPubkey.get(pubkey)
-    if (currentEntry && currentEntry != minipoolAddress) {
-      const currentMinipool = new ethers.Contract(currentEntry, minipoolAbi, provider)
-      const pendingMinipool = new ethers.Contract(minipoolAddress, minipoolAbi, provider)
-      const currentStatus = await currentMinipool.getStatus()
-      const pendingStatus = await pendingMinipool.getStatus()
-      if (currentStatus == pendingStatus)
-        throw new Error(`Duplicate minipools with status ${currentStatus} for ${pubkey}: ${minipoolAddress} vs ${currentEntry}`)
-      const activeAddress = currentStatus == statusDissolved ? minipoolAddress :
-                            pendingStatus == statusDissolved ? currentEntry : null
-      if (!activeAddress)
-        throw new Error(`Duplicate minipools for ${pubkey} with neither dissolved: ${minipoolAddress} vs ${currentEntry}`)
-      log(`Found duplicate minipools for ${pubkey}: ${minipoolAddress} vs ${currentEntry}. Keeping ${activeAddress}.`)
-      minipoolsByPubkey.set(pubkey, activeAddress)
+async function updateWithdrawalAddresses() {
+  const finalizedBlockNumber = await provider.getBlock('finalized').then(b => b.number)
+  while (withdrawalAddressBlock < finalizedBlockNumber) {
+    const min = withdrawalAddressBlock
+    const max = Math.min(withdrawalAddressBlock + MAX_QUERY_RANGE, finalizedBlockNumber)
+    log(`Processing withdrawal addresses ${min}...${max}`)
+    const logs = await rocketStorage.queryFilter('NodeWithdrawalAddressSet', min, max)
+    for (const entry of logs) {
+      const nodeAddress = entry.args[0]
+      const withdrawalAddress = entry.args[1]
+      await db.transaction(() => {
+        const key = `${chainId}/withdrawalAddress/${withdrawalAddress}`
+        const nodeAddresses = db.get(key) || new Set()
+        nodeAddresses.add(nodeAddress)
+        db.put(key, nodeAddresses)
+      })
     }
-    else
-      minipoolsByPubkey.set(pubkey, minipoolAddress)
+    withdrawalAddressBlock = max
+    await db.put(`${chainId}/withdrawalAddressBlock`, withdrawalAddressBlock)
   }
-  incrementMinipoolsByPubkeyCount(n)
-  log(`Got pubkeys for ${minipoolsByPubkeyCount} minipools`)
 }
-await db.put(`${chainId}/minipoolsByPubkeyCount`, minipoolsByPubkeyCount)
-await db.put(`${chainId}/minipoolsByPubkey`, minipoolsByPubkey)
 
-// TODO: add listener for minipool added
+async function updateMinipoolPubkeys() {
+  const prevMinipoolCount = minipoolCount
+  await updateMinipoolCount()
+  while (minipoolsByPubkeyCount < minipoolCount) {
+    const n = Math.min(MAX_QUERY_RANGE, minipoolCount - minipoolsByPubkeyCount)
+    const minipoolAddresses = await multicall(
+      Array(n).fill().map((_, i) => ({
+        contract: rocketMinipoolManager,
+        fn: 'getMinipoolAt',
+        args: [minipoolsByPubkeyCount + i]
+      }))
+    )
+    const pubkeys = await multicall(
+      minipoolAddresses.map(minipoolAddress => ({
+        contract: rocketMinipoolManager,
+        fn: 'getMinipoolPubkey',
+        args: [minipoolAddress]
+      }))
+    )
+    for (const [i, minipoolAddress] of minipoolAddresses.entries()) {
+      const pubkey = pubkeys[i]
+      const currentEntry = minipoolsByPubkey.get(pubkey)
+      if (currentEntry && currentEntry != minipoolAddress) {
+        const currentMinipool = new ethers.Contract(currentEntry, minipoolAbi, provider)
+        const pendingMinipool = new ethers.Contract(minipoolAddress, minipoolAbi, provider)
+        const currentStatus = await currentMinipool.getStatus()
+        const pendingStatus = await pendingMinipool.getStatus()
+        if (currentStatus == pendingStatus)
+          throw new Error(`Duplicate minipools with status ${currentStatus} for ${pubkey}: ${minipoolAddress} vs ${currentEntry}`)
+        const activeAddress = currentStatus == statusDissolved ? minipoolAddress :
+                              pendingStatus == statusDissolved ? currentEntry : null
+        if (!activeAddress)
+          throw new Error(`Duplicate minipools for ${pubkey} with neither dissolved: ${minipoolAddress} vs ${currentEntry}`)
+        log(`Found duplicate minipools for ${pubkey}: ${minipoolAddress} vs ${currentEntry}. Keeping ${activeAddress}.`)
+        minipoolsByPubkey.set(pubkey, activeAddress)
+      }
+      else
+        minipoolsByPubkey.set(pubkey, minipoolAddress)
+    }
+    incrementMinipoolsByPubkeyCount(n)
+    log(`Got pubkeys for ${minipoolsByPubkeyCount} minipools`)
+  }
+  if (minipoolCount != prevMinipoolCount) {
+    await db.put(`${chainId}/minipoolsByPubkeyCount`, minipoolsByPubkeyCount)
+    await db.put(`${chainId}/minipoolsByPubkey`, minipoolsByPubkey)
+  }
+}
+
+if (process.env.LISTEN) { // only run one instance with this flag to avoid races
+  provider.addListener('block', () => Promise.all([
+    updateWithdrawalAddresses(),
+    updateMinipoolPubkeys()
+  ]))
+}
 
 async function getActivationInfo(validatorIndex) {
   const key = `${chainId}/validator/${validatorIndex}/activationInfo`
@@ -253,7 +262,7 @@ const epochFromActivationInfo = activationInfo =>
     epochOfSlot(activationInfo.promoted) :
     activationInfo.beacon
 
-// TODO: get everything already in the db + validatorIdsToProcess
+// TODO: get everything already in the db + validatorIdsToProcess / get all validators?
 const validatorIdsToConsider = new Map()
 for (const validatorIndex of validatorIdsToProcess) {
   log(`Getting activation epoch for ${validatorIndex}`)
@@ -263,6 +272,9 @@ for (const validatorIndex of validatorIdsToProcess) {
   )
 }
 
+// TODO: listen for new epochs
+
+const finalizedSlot = await getFinalizedSlot()
 const finalizedEpoch = epochOfSlot(finalizedSlot - 1)
 
 let epoch = Math.min(
@@ -529,7 +541,5 @@ while (epoch <= finalEpoch) {
       log(`Updated nextEpoch to ${epoch} for ${updated}`)
   }
 }
-
-// TODO: add listener for new epochs
 
 await db.close()

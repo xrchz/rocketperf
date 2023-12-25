@@ -7,7 +7,7 @@ import https from 'node:https'
 import { Server } from 'socket.io'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { db, log, provider, chainId, beaconRpcUrl, nullAddress,
+import { db, log, provider, chainId, beaconRpcUrl, nullAddress, slotsPerEpoch,
          multicall, getIndexFromPubkey, getPubkeyFromIndex, getMinipoolByPubkey,
          getRocketAddress, rocketMinipoolManager, minipoolAbi,
          timeSlotConvs, getFinalizedSlot, epochOfSlot, secondsPerSlot }
@@ -232,6 +232,24 @@ io.on('connection', socket => {
         socket.emit('unknownEntities', minipools.flatMap(x => x.values.length ? [] : [x.entity]))
       }
     )
+  })
+
+  socket.on('slotRangeLimits', async validatorIndices => {
+    let min = Infinity
+    const max = await getFinalizedSlot()
+    for (const validatorIndex of validatorIndices) {
+      const activationInfo = db.get(`${chainId}/validator/${validatorIndex}/activationInfo`)
+      if (!activationInfo) {
+        console.warn(`No activationInfo for ${validatorIndex} trying to set slotRangeLimits`)
+        continue
+      }
+      min = Math.min(min,
+        activationInfo.promoted ?
+        parseInt(activationInfo.promoted) :
+        parseInt(activationInfo.beacon) * slotsPerEpoch
+      )
+    }
+    socket.emit('slotRangeLimits', {min, max})
   })
 
   socket.on('setSlot', async ({dir, type, value, other}) => {

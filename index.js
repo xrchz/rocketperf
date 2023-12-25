@@ -175,6 +175,7 @@ const fromSlot = document.createElement('input')
 const toSlotLabel = document.createElement('label')
 const toSlot = document.createElement('input')
 ;[fromSlotLabel, toSlotLabel].forEach(e => e.classList.add('slotLabel'))
+const slotRangeLimits = {min: 0, max: Infinity}
 const slotSelectors = new Map()
 slotSelectors.set('fromDate', fromDate)
 slotSelectors.set('fromTime', fromTime)
@@ -593,9 +594,17 @@ socket.on('minipools', minipools => {
   updateIncludeAllChecked()
   if (minipools.length) {
     minipoolsList.classList.remove('hidden')
+    socket.volatile.emit('slotRangeLimits', minipools.flatMap(({validatorIndex, selected}) =>
+      selected ? [validatorIndex] : []))
     updatePerformanceDetails()
   }
   else minipoolsList.classList.add('hidden')
+})
+
+socket.on('slotRangeLimits', ({min, max}) => {
+  slotRangeLimits.min = min
+  slotRangeLimits.max = max
+  // TODO: update slot inputs to conform to range
 })
 
 socket.on('unknownEntities', entities => {

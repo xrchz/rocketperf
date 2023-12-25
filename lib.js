@@ -8,7 +8,7 @@ const timestamp = () => Intl.DateTimeFormat(
 
 export const log = s => console.log(`${timestamp()} ${s}`)
 
-const nullAddress = '0x'.padEnd(42, '0')
+export const nullAddress = '0x'.padEnd(42, '0')
 
 export const provider = new ethers.JsonRpcProvider(process.env.RPC)
 export const chainId = await provider.getNetwork().then(n => n.chainId)

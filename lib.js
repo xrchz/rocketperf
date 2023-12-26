@@ -16,6 +16,7 @@ export const beaconRpcUrl = process.env.BN
 
 export const db = open({path: 'db', encoder: {structuredClone: true}})
 
+export const FAR_FUTURE_EPOCH = 2 ** 64 - 1
 export const secondsPerSlot = 12
 export const slotsPerEpoch = 32
 export const genesisTimes = {
@@ -43,8 +44,10 @@ export async function getIndexFromPubkey(pubkey) {
     const path = `/eth/v1/beacon/states/finalized/validators/${pubkey}`
     const url = new URL(path, beaconRpcUrl)
     const response = await fetch(url)
-    if (response.status === 404)
+    if (response.status === 404) {
+      log(`Validator index missing for pubkey ${pubkey}`)
       return -1
+    }
     if (response.status !== 200) {
       console.warn(`Unexpected response status getting ${pubkey} index: ${response.status}`)
       return -2

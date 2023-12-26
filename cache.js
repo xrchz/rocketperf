@@ -5,7 +5,7 @@ import { db, provider, chainId, beaconRpcUrl, log, multicall, secondsPerSlot,
          minipoolsByPubkeyCount, minipoolsByPubkey, minipoolCount,
          updateMinipoolCount, incrementMinipoolsByPubkeyCount, getIndexFromPubkey,
          getMinipoolByPubkey, getFinalizedSlot, getPubkeyFromIndex,
-         rocketMinipoolManager
+         rocketMinipoolManager, FAR_FUTURE_EPOCH
        } from './lib.js'
 
 const {timeToSlot, slotToTime} = timeSlotConvs(chainId)
@@ -166,10 +166,15 @@ async function getActivationInfo(validatorIndex) {
     const url = new URL(path, beaconRpcUrl)
     const res = await fetch(url)
     const json = await res.json()
-    if (!(0 <= parseInt(json?.data?.validator?.activation_epoch)))
+    const epoch = parseInt(json?.data?.validator?.activation_epoch)
+    if (!(0 <= epoch))
       throw new Error(`Failed to get activation_epoch for ${validatorIndex}`)
-    activationInfo.beacon = parseInt(json.data.validator.activation_epoch)
-    changed = true
+    if (epoch == FAR_FUTURE_EPOCH)
+      log(`Skipping setting unknown activation epoch for ${validatorIndex}`)
+    else {
+      activationInfo.beacon = epoch
+      changed = true
+    }
   }
   if (!('promoted' in activationInfo)) {
     const pubkey = await getPubkeyFromIndex(validatorIndex)
@@ -239,12 +244,15 @@ async function processEpochs() {
 
   await arrayPromises(
     validatorIdsToProcess.map(validatorIndex =>
-      (async () =>
-        validatorStartEpochs.set(
-          validatorIndex,
-          epochFromActivationInfo(await getActivationInfo(validatorIndex))
-        )
-      )),
+      async () => {
+        if (!(0 <= parseInt(validatorIndex))) return
+        const epoch = epochFromActivationInfo(await getActivationInfo(validatorIndex))
+        if (typeof epoch == 'number')
+          validatorStartEpochs.set(validatorIndex, epoch)
+        else
+          log(`Skipping ${validatorIndex} with start epoch ${epoch}`)
+      }
+    ),
     MAX_BEACON_RANGE,
     (numLeft) => log(`Getting activationInfo, ${numLeft} validators left`)
   )

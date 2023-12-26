@@ -37,18 +37,26 @@ export const getFinalizedSlot = () =>
   ).then(res => res.json().then(j => j.data.message.slot))
 
 export async function getIndexFromPubkey(pubkey) {
-  const path = `/eth/v1/beacon/states/head/validators/${pubkey}`
-  const url = new URL(path, beaconRpcUrl)
-  const response = await fetch(url)
-  if (response.status === 404)
-    return -1
-  if (response.status !== 200)
-    console.warn(`Unexpected response status getting ${pubkey} index: ${response.status}`)
-  return await response.json().then(j => j.data.index)
+  const key = `${chainId}/validatorIndex/${pubkey}`
+  const cached = db.get(key)
+  if (isNaN(parseInt(cached))) {
+    const path = `/eth/v1/beacon/states/finalized/validators/${pubkey}`
+    const url = new URL(path, beaconRpcUrl)
+    const response = await fetch(url)
+    if (response.status === 404)
+      return -1
+    if (response.status !== 200) {
+      console.warn(`Unexpected response status getting ${pubkey} index: ${response.status}`)
+      return -2
+    }
+    const index = await response.json().then(j => j.data.index)
+    await db.put(key, index)
+    return index
+  } else return cached
 }
 
 export async function getPubkeyFromIndex(index) {
-  const path = `/eth/v1/beacon/states/head/validators/${index}`
+  const path = `/eth/v1/beacon/states/finalized/validators/${index}`
   const url = new URL(path, beaconRpcUrl)
   const response = await fetch(url)
   if (response.status === 404)

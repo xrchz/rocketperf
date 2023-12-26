@@ -231,13 +231,17 @@ async function processEpochs() {
 
   processedMinipoolCount = targetMinipoolCount
 
-  for (const validatorIndex of validatorIdsToProcess) {
-    log(`Getting activation info for ${validatorIndex}`)
-    validatorStartEpochs.set(
-      validatorIndex,
-      epochFromActivationInfo(await getActivationInfo(validatorIndex))
-    )
-  }
+  await arrayPromises(
+    validatorIdsToProcess.map(validatorIndex =>
+      (async () =>
+        validatorStartEpochs.set(
+          validatorIndex,
+          epochFromActivationInfo(await getActivationInfo(validatorIndex))
+        )
+      )),
+    MAX_BEACON_RANGE,
+    (numLeft) => log(`Getting activationInfo, ${numLeft} validators left`)
+  )
 
   const finalizedSlot = await getFinalizedSlot()
 

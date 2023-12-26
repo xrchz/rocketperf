@@ -1,9 +1,9 @@
 import 'dotenv/config'
 import { ethers } from 'ethers'
-import { db, provider, chainId, beaconRpcUrl, log, multicall,
+import { db, provider, chainId, beaconRpcUrl, log, multicall, secondsPerSlot,
          timeSlotConvs, slotsPerEpoch, epochOfSlot, minipoolAbi,
          minipoolsByPubkeyCount, minipoolsByPubkey, minipoolCount,
-         updateMinipoolCount, incrementMinipoolsByPubkeyCount,
+         updateMinipoolCount, incrementMinipoolsByPubkeyCount, getIndexFromPubkey,
          getMinipoolByPubkey, getFinalizedSlot, getPubkeyFromIndex,
          rocketMinipoolManager
        } from './lib.js'
@@ -39,6 +39,24 @@ function hexStringToBitlist(s) {
 }
 
 const MAX_QUERY_RANGE = 1000
+const MAX_ARGS = 10000
+const MAX_BEACON_RANGE = 100
+
+const arrayMin = (a) => {
+  let min = Infinity
+  while (a.length) min = Math.min(min, ...a.splice(0, MAX_ARGS))
+  return min
+}
+
+const arrayPromises = async (a, max, logger) => {
+  log(`Processing ${a.length} promises ${max} at a time`)
+  const result = []
+  while (a.length) {
+    logger(a.length)
+    result.push(...await Promise.all(a.splice(0, max).map(f => f())))
+  }
+  return result
+}
 
 const rocketStorage = new ethers.Contract(
   await provider.resolveName('rocketstorage.eth'),
@@ -176,370 +194,325 @@ async function getActivationInfo(validatorIndex) {
   return activationInfo
 }
 
-// TODO: get these from all rocketpool minipools
-const validatorIdsToProcess = [
-  '509045',
-  '509048',
-  '509049',
-  '509076',
-  '509077',
-  '509644',
-  '517312',
-  '581781',
-  '915834',
-  '915835',
-  '915836',
-  '915837',
-  '915838',
-  '918039',
-  '918040',
-  '263489',
-  '263491',
-  '410932',
-  '583656',
-  '583658',
-  '583659',
-
-  '178607',
-  '299145',
-  '299563',
-  '315096',
-  '315416',
-  '331665',
-  '395350',
-  '396666',
-  '396667',
-  '405639',
-  '405712',
-  '409340',
-  '410810',
-  '410851',
-  '410896',
-  '411937',
-  '415621',
-  '466392',
-  '485042',
-  '485428',
-  '518517',
-  '879631',
-  '883986',
-  '890986',
-  '891017',
-  '893010',
-  '893011',
-  '893047',
-  '895461',
-  '895462',
-  '898190',
-  '898195',
-  '898198',
-  '902988',
-  '915547',
-  '932768',
-  '940859',
-  '940860',
-  '943025',
-  '943026',
-  '954862',
-  '968183',
-  '975220',
-  '1017625',
-  '1017762',
-  '1017767',
-  '1034429',
-  '1034438',
-  '1043986',
-  '1044502',
-  '1089033',
-  '1089163',
-  '1089178',
-  '1089365',
-  '1089776'
-]
-
 const epochFromActivationInfo = activationInfo =>
   activationInfo.promoted ?
     epochOfSlot(activationInfo.promoted) :
     activationInfo.beacon
 
-// TODO: get everything already in the db + validatorIdsToProcess / get all validators?
-const validatorIdsToConsider = new Map()
-for (const validatorIndex of validatorIdsToProcess) {
-  log(`Getting activation epoch for ${validatorIndex}`)
-  validatorIdsToConsider.set(
-    validatorIndex,
-    epochFromActivationInfo(await getActivationInfo(validatorIndex))
-  )
-}
+const validatorStartEpochs = new Map()
 
-// TODO: listen for new epochs
-
-const finalizedSlot = await getFinalizedSlot()
-const finalizedEpoch = epochOfSlot(finalizedSlot - 1)
-
-let epoch = Math.min(
-  ...(validatorIdsToProcess.map(validatorIndex =>
-        Math.max(
-          db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`) ?? 0,
-          validatorIdsToConsider.get(validatorIndex)
-        ))
-     )
-)
-
-if (process.env.OVERRIDE_START_EPOCH)
-  epoch = parseInt(process.env.OVERRIDE_START_EPOCH)
-const finalEpoch = parseInt(process.env.OVERRIDE_FINAL_EPOCH) || finalizedEpoch
-
-log(`Getting data for epochs ${epoch} through ${finalEpoch}`)
-
-const getValidatorIdsToConsiderForEpoch = (epoch) => new Set(
-  Array.from(validatorIdsToConsider.entries()).flatMap(
+const getValidatorsIdsForEpoch = (epoch) => new Set(
+  Array.from(validatorStartEpochs.entries()).flatMap(
     ([id, actEp]) => actEp <= epoch ? [id] : []
   )
 )
 
-const rewardsOptionsForEpoch = (validatorIdsToConsiderForEpoch) => ({
+const rewardsOptionsForEpoch = (validatorIds) => ({
   method: 'POST',
   headers: {'Content-Type': 'application/json'},
-  body: JSON.stringify(Array.from(validatorIdsToConsiderForEpoch.keys()))
+  body: JSON.stringify(Array.from(validatorIds.keys()))
 })
 
-while (epoch <= finalEpoch) {
-  log(`Processing epoch ${epoch}`)
+let processedMinipoolCount = 0
 
-  const validatorIdsToConsiderForEpoch = getValidatorIdsToConsiderForEpoch(epoch)
+async function processEpochs() {
+  const targetMinipoolCount = minipoolsByPubkey.size
 
-  if (!validatorIdsToConsiderForEpoch.size) {
-    console.warn(`${epoch} has no relevant active validators`)
-    epoch += 1
-    continue
-  }
+  log(`targetMinipoolCount: ${targetMinipoolCount}, processedMinipoolCount: ${processedMinipoolCount}`)
 
-  const rewardsOptions = rewardsOptionsForEpoch(validatorIdsToConsiderForEpoch)
-
-  const firstSlotInEpoch = epoch * slotsPerEpoch
-
-  log(`Getting attestation duties for ${epoch}`)
-
-  const attestationDutiesUrl = new URL(
-    `/eth/v1/beacon/states/${firstSlotInEpoch}/committees?epoch=${epoch}`,
-    beaconRpcUrl
+  const validatorIdsToProcess = await arrayPromises(
+    Array.from(minipoolsByPubkey.keys()).slice(
+      processedMinipoolCount, targetMinipoolCount).map(
+        pubkey => (() => getIndexFromPubkey(pubkey))
+      ),
+    MAX_BEACON_RANGE,
+    (numLeft) => log(`Getting validatorIds, ${numLeft} left`)
   )
-  const committees = await fetch(attestationDutiesUrl).then(async res => {
-    if (res.status !== 200)
-      throw new Error(`Got ${res.status} fetching attestation duties for ${epoch}: ${await res.text()}`)
-    const json = await res.json()
-    return json.data
-  })
-  for (const {index, slot, validators} of committees) {
-    for (const [position, selectedIndex] of validators.entries()) {
-      if (validatorIdsToConsiderForEpoch.has(selectedIndex)) {
-        const attestationKey = `${chainId}/validator/${selectedIndex}/attestation/${epoch}`
-        const attestation = db.get(attestationKey) || {}
-        if (!('position' in attestation)) {
-          log(`Adding attestation duty @ ${slot} for validator ${selectedIndex}`)
-          attestation.slot = parseInt(slot)
-          attestation.index = parseInt(index)
-          attestation.position = position
-          await db.put(attestationKey, attestation)
-        }
-      }
-    }
+
+  processedMinipoolCount = targetMinipoolCount
+
+  for (const validatorIndex of validatorIdsToProcess) {
+    log(`Getting activation info for ${validatorIndex}`)
+    validatorStartEpochs.set(
+      validatorIndex,
+      epochFromActivationInfo(await getActivationInfo(validatorIndex))
+    )
   }
 
-  log(`Getting sync duties for ${epoch}`)
+  const finalizedSlot = await getFinalizedSlot()
 
-  const syncDutiesUrl = new URL(
-    `/eth/v1/beacon/states/${firstSlotInEpoch}/sync_committees?epoch=${epoch}`,
-    beaconRpcUrl
+  let epoch = (
+    process.env.OVERRIDE_START_EPOCH ||
+    arrayMin(
+      Array.from(validatorStartEpochs.entries()).map(
+        ([validatorIndex, activationEpoch]) =>
+        Math.max(
+          db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`) ?? 0,
+          activationEpoch
+        )
+      )
+    )
   )
-  const syncValidators = await fetch(syncDutiesUrl).then(async res => {
-    if (res.status === 400 && await res.json().then(j => j.message.endsWith("not activated for Altair")))
-      return []
-    if (res.status !== 200)
-      throw new Error(`Got ${res.status} fetching sync duties for ${epoch}: ${await res.text()}`)
-    const json = await res.json()
-    return json.data.validators
-  })
-  for (const [position, validatorIndex] of syncValidators.entries()) {
-    if (validatorIdsToConsiderForEpoch.has(validatorIndex)) {
-      const syncKey = `${chainId}/validator/${validatorIndex}/sync/${epoch}`
-      const sync = db.get(syncKey) || {}
-      if (!('position' in sync)) {
-        log(`Adding sync duty for epoch ${epoch} for validator ${validatorIndex}`)
-        sync.position = position
-        sync.missed = []
-        sync.rewards = []
-        await db.put(syncKey, sync)
-      }
+
+  const finalEpoch = (
+    parseInt(process.env.OVERRIDE_FINAL_EPOCH) ||
+    epochOfSlot(finalizedSlot - 1)
+  )
+
+  log(`Getting data for epochs ${epoch} through ${finalEpoch}`)
+
+  while (epoch <= finalEpoch) {
+    log(`Processing epoch ${epoch}`)
+
+    const validatorIds = getValidatorsIdsForEpoch(epoch)
+
+    if (!validatorIds.size) {
+      console.warn(`${epoch} has no relevant active validators`)
+      epoch += 1
+      continue
     }
-  }
 
-  log(`Getting attestations and syncs for ${epoch}`)
+    const rewardsOptions = rewardsOptionsForEpoch(validatorIds)
 
-  let searchSlot = firstSlotInEpoch
-  while (searchSlot < firstSlotInEpoch + slotsPerEpoch) {
-    const blockUrl = new URL(
-      `/eth/v1/beacon/blinded_blocks/${searchSlot}`,
+    const firstSlotInEpoch = epoch * slotsPerEpoch
+
+    log(`Getting attestation duties for ${epoch}`)
+
+    const attestationDutiesUrl = new URL(
+      `/eth/v1/beacon/states/${firstSlotInEpoch}/committees?epoch=${epoch}`,
       beaconRpcUrl
     )
-    const blockData = await fetch(blockUrl).then(async res => {
-      if (res.status === 404) {
-        log(`Block for slot ${searchSlot} missing`)
-        return { attestations: [] }
-      }
+    const committees = await fetch(attestationDutiesUrl).then(async res => {
       if (res.status !== 200)
-        throw new Error(`Got ${res.status} fetching blinded block @ ${searchSlot}: ${await res.text()}`)
+        throw new Error(`Got ${res.status} fetching attestation duties for ${epoch}: ${await res.text()}`)
       const json = await res.json()
-      return json.data.message.body
+      return json.data
     })
-    const attestations = blockData.attestations
-    for (const {aggregation_bits, data: {slot, index, beacon_block_root, source, target}} of attestations) {
-      const attestedBits = hexStringToBitlist(aggregation_bits)
-      const attestationEpoch = epochOfSlot(parseInt(slot))
-      for (const validatorIndex of validatorIdsToConsiderForEpoch.keys()) {
-        const attestationKey = `${chainId}/validator/${validatorIndex}/attestation/${attestationEpoch}`
-        const attestation = db.get(attestationKey)
-        if (attestation?.slot == slot && attestation.index == index && !(attestation.attested?.slot <= searchSlot)) {
-          if (attestedBits[attestation.position]) {
-            attestation.attested = { slot: searchSlot, head: beacon_block_root, source, target }
-            log(`Adding attestation for ${slot} (${attestationEpoch}) for validator ${validatorIndex} ${JSON.stringify(attestation.attested)}`)
+    for (const {index, slot, validators} of committees) {
+      for (const [position, selectedIndex] of validators.entries()) {
+        if (validatorIds.has(selectedIndex)) {
+          const attestationKey = `${chainId}/validator/${selectedIndex}/attestation/${epoch}`
+          const attestation = db.get(attestationKey) || {}
+          if (!('position' in attestation)) {
+            log(`Adding attestation duty @ ${slot} for validator ${selectedIndex}`)
+            attestation.slot = parseInt(slot)
+            attestation.index = parseInt(index)
+            attestation.position = position
             await db.put(attestationKey, attestation)
           }
         }
       }
     }
-    if (blockData.sync_aggregate) {
-      const syncBits = hexStringToBitvector(blockData.sync_aggregate.sync_committee_bits)
-      for (const validatorIndex of validatorIdsToConsiderForEpoch.keys()) {
-        const syncKey = `${chainId}/validator/${validatorIndex}/sync/${epoch}`
-        const sync = db.get(syncKey)
-        if (sync) {
-          if (!syncBits[sync.position] && !sync.missed.includes(searchSlot)) {
-            sync.missed.push(searchSlot)
-            await db.put(syncKey, sync)
-          }
-          else {
-            log(`Adding sync message for ${searchSlot} for validator ${validatorIndex}`)
-          }
-        }
-      }
 
-      const syncRewardsUrl = new URL(
-        `/eth/v1/beacon/rewards/sync_committee/${searchSlot}`,
-        beaconRpcUrl
-      )
-      const syncRewards = await fetch(syncRewardsUrl, rewardsOptions).then(async res => {
-        if (res.status !== 200)
-          throw new Error(`Got ${res.status} fetching sync rewards @ ${searchSlot}: ${await res.text()}`)
-        const json = await res.json()
-        return json.data
-      })
-      for (const {validator_index, reward} of syncRewards) {
-        const syncKey = `${chainId}/validator/${validator_index}/sync/${epoch}`
-        const sync = db.get(syncKey)
-        if (!sync) {
-          if (reward !== '0')
-            throw new Error(`Non-zero reward ${reward} but no sync object at ${syncKey}`)
-          continue
-        }
-        if (sync.rewards.every(({slot}) => slot != searchSlot)) {
-          log(`Adding sync reward for ${searchSlot} for validator ${validator_index}: ${reward}`)
-          sync.rewards.push({slot: searchSlot, reward})
+    log(`Getting sync duties for ${epoch}`)
+
+    const syncDutiesUrl = new URL(
+      `/eth/v1/beacon/states/${firstSlotInEpoch}/sync_committees?epoch=${epoch}`,
+      beaconRpcUrl
+    )
+    const syncValidators = await fetch(syncDutiesUrl).then(async res => {
+      if (res.status === 400 && await res.json().then(j => j.message.endsWith("not activated for Altair")))
+        return []
+      if (res.status !== 200)
+        throw new Error(`Got ${res.status} fetching sync duties for ${epoch}: ${await res.text()}`)
+      const json = await res.json()
+      return json.data.validators
+    })
+    for (const [position, validatorIndex] of syncValidators.entries()) {
+      if (validatorIds.has(validatorIndex)) {
+        const syncKey = `${chainId}/validator/${validatorIndex}/sync/${epoch}`
+        const sync = db.get(syncKey) || {}
+        if (!('position' in sync)) {
+          log(`Adding sync duty for epoch ${epoch} for validator ${validatorIndex}`)
+          sync.position = position
+          sync.missed = []
+          sync.rewards = []
           await db.put(syncKey, sync)
         }
       }
     }
 
-    searchSlot++
-  }
+    log(`Getting attestations and syncs for ${epoch}`)
 
-  log(`Getting attestation rewards for ${epoch}`)
-
-  const attestationRewardsUrl = new URL(
-    `/eth/v1/beacon/rewards/attestations/${epoch}`,
-    beaconRpcUrl
-  )
-  const attestationRewards = await fetch(attestationRewardsUrl, rewardsOptions).then(async res => {
-    if (res.status !== 200)
-      throw new Error(`Got ${res.status} fetching attestation rewards in epoch ${epoch}: ${await res.text()}`)
-    const json = await res.json()
-    return json.data
-  })
-  for (const {validator_index, head, target, source, inactivity} of attestationRewards.total_rewards) {
-    const attestationKey = `${chainId}/validator/${validator_index}/attestation/${epoch}`
-    const attestation = db.get(attestationKey)
-    if (attestation && !('reward' in attestation && 'ideal' in attestation)) {
-      const effectiveBalanceUrl = new URL(
-        `/eth/v1/beacon/states/${firstSlotInEpoch}/validators/${validator_index}`,
+    let searchSlot = firstSlotInEpoch
+    while (searchSlot < firstSlotInEpoch + slotsPerEpoch) {
+      const blockUrl = new URL(
+        `/eth/v1/beacon/blinded_blocks/${searchSlot}`,
         beaconRpcUrl
       )
-      const effectiveBalance = await fetch(effectiveBalanceUrl).then(async res => {
+      const blockData = await fetch(blockUrl).then(async res => {
+        if (res.status === 404) {
+          log(`Block for slot ${searchSlot} missing`)
+          return { attestations: [] }
+        }
         if (res.status !== 200)
-          throw new Error(`Got ${res.status} fetching effective balance in ${firstSlotInEpoch} for ${validator_index}: ${await res.text()}`)
+          throw new Error(`Got ${res.status} fetching blinded block @ ${searchSlot}: ${await res.text()}`)
         const json = await res.json()
-        return json.data.validator.effective_balance
+        return json.data.message.body
       })
-      attestation.reward = {head, target, source, inactivity}
-      const ideal = attestationRewards.ideal_rewards.find(x => x.effective_balance === effectiveBalance)
-      if (!ideal) throw new Error(`Could not get ideal rewards for ${firstSlotInEpoch} ${validator_index} with ${effectiveBalance}`)
-      attestation.ideal = {}
-      for (const key of Object.keys(attestation.reward))
-        attestation.ideal[key] = ideal[key]
-      log(`Adding attestation reward for epoch ${epoch} for validator ${validator_index}: ${Object.entries(attestation.reward)} / ${Object.entries(attestation.ideal)}`)
-      await db.put(attestationKey, attestation)
+      const attestations = blockData.attestations
+      for (const {aggregation_bits, data: {slot, index, beacon_block_root, source, target}} of attestations) {
+        const attestedBits = hexStringToBitlist(aggregation_bits)
+        const attestationEpoch = epochOfSlot(parseInt(slot))
+        for (const validatorIndex of validatorIds.keys()) {
+          const attestationKey = `${chainId}/validator/${validatorIndex}/attestation/${attestationEpoch}`
+          const attestation = db.get(attestationKey)
+          if (attestation?.slot == slot && attestation.index == index && !(attestation.attested?.slot <= searchSlot)) {
+            if (attestedBits[attestation.position]) {
+              attestation.attested = { slot: searchSlot, head: beacon_block_root, source, target }
+              log(`Adding attestation for ${slot} (${attestationEpoch}) for validator ${validatorIndex} ${JSON.stringify(attestation.attested)}`)
+              await db.put(attestationKey, attestation)
+            }
+          }
+        }
+      }
+      if (blockData.sync_aggregate) {
+        const syncBits = hexStringToBitvector(blockData.sync_aggregate.sync_committee_bits)
+        for (const validatorIndex of validatorIds.keys()) {
+          const syncKey = `${chainId}/validator/${validatorIndex}/sync/${epoch}`
+          const sync = db.get(syncKey)
+          if (sync) {
+            if (!syncBits[sync.position] && !sync.missed.includes(searchSlot)) {
+              sync.missed.push(searchSlot)
+              await db.put(syncKey, sync)
+            }
+            else {
+              log(`Adding sync message for ${searchSlot} for validator ${validatorIndex}`)
+            }
+          }
+        }
+
+        const syncRewardsUrl = new URL(
+          `/eth/v1/beacon/rewards/sync_committee/${searchSlot}`,
+          beaconRpcUrl
+        )
+        const syncRewards = await fetch(syncRewardsUrl, rewardsOptions).then(async res => {
+          if (res.status !== 200)
+            throw new Error(`Got ${res.status} fetching sync rewards @ ${searchSlot}: ${await res.text()}`)
+          const json = await res.json()
+          return json.data
+        })
+        for (const {validator_index, reward} of syncRewards) {
+          const syncKey = `${chainId}/validator/${validator_index}/sync/${epoch}`
+          const sync = db.get(syncKey)
+          if (!sync) {
+            if (reward !== '0')
+              throw new Error(`Non-zero reward ${reward} but no sync object at ${syncKey}`)
+            continue
+          }
+          if (sync.rewards.every(({slot}) => slot != searchSlot)) {
+            log(`Adding sync reward for ${searchSlot} for validator ${validator_index}: ${reward}`)
+            sync.rewards.push({slot: searchSlot, reward})
+            await db.put(syncKey, sync)
+          }
+        }
+      }
+
+      searchSlot++
     }
-  }
 
-  log(`Getting proposals for ${epoch}`)
+    log(`Getting attestation rewards for ${epoch}`)
 
-  const proposalUrl = new URL(
-    `/eth/v1/validator/duties/proposer/${epoch}`,
-    beaconRpcUrl
-  )
-  const proposals = await fetch(proposalUrl).then(async res => {
-    if (res.status !== 200)
-      throw new Error(`Got ${res.status} fetching proposal duties for epoch ${epoch}: ${await res.text()}`)
-    const json = await res.json()
-    return json.data
-  })
-  for (const {validator_index, slot} of proposals) {
-    if (validatorIdsToConsiderForEpoch.has(validator_index)) {
-      const proposalKey = `${chainId}/validator/${validator_index}/proposal/${slot}`
-      const proposal = db.get(proposalKey) || {}
-      if (!('reward' in proposal)) {
-        const proposalRewardUrl = new URL(`/eth/v1/beacon/rewards/blocks/${slot}`, beaconRpcUrl)
-        const response = await fetch(proposalRewardUrl)
-        if (response.status === 404) {
-          log(`Adding missed proposal for ${validator_index} @ ${slot}`)
-          proposal.missed = true
-          proposal.reward = '0'
-        }
-        else if (response.status === 200) {
-          log(`Adding proposal reward for ${validator_index} @ ${slot}`)
-          const reward = await response.json().then(j => j.data.total)
-          proposal.reward = reward
-        }
-        else throw new Error(`Got ${response.status} fetching block rewards @ ${slot}`)
-        await db.put(proposalKey, proposal)
+    const attestationRewardsUrl = new URL(
+      `/eth/v1/beacon/rewards/attestations/${epoch}`,
+      beaconRpcUrl
+    )
+    const attestationRewards = await fetch(attestationRewardsUrl, rewardsOptions).then(async res => {
+      if (res.status !== 200)
+        throw new Error(`Got ${res.status} fetching attestation rewards in epoch ${epoch}: ${await res.text()}`)
+      const json = await res.json()
+      return json.data
+    })
+    for (const {validator_index, head, target, source, inactivity} of attestationRewards.total_rewards) {
+      const attestationKey = `${chainId}/validator/${validator_index}/attestation/${epoch}`
+      const attestation = db.get(attestationKey)
+      if (attestation && !('reward' in attestation && 'ideal' in attestation)) {
+        const effectiveBalanceUrl = new URL(
+          `/eth/v1/beacon/states/${firstSlotInEpoch}/validators/${validator_index}`,
+          beaconRpcUrl
+        )
+        const effectiveBalance = await fetch(effectiveBalanceUrl).then(async res => {
+          if (res.status !== 200)
+            throw new Error(`Got ${res.status} fetching effective balance in ${firstSlotInEpoch} for ${validator_index}: ${await res.text()}`)
+          const json = await res.json()
+          return json.data.validator.effective_balance
+        })
+        attestation.reward = {head, target, source, inactivity}
+        const ideal = attestationRewards.ideal_rewards.find(x => x.effective_balance === effectiveBalance)
+        if (!ideal) throw new Error(`Could not get ideal rewards for ${firstSlotInEpoch} ${validator_index} with ${effectiveBalance}`)
+        attestation.ideal = {}
+        for (const key of Object.keys(attestation.reward))
+          attestation.ideal[key] = ideal[key]
+        log(`Adding attestation reward for epoch ${epoch} for validator ${validator_index}: ${Object.entries(attestation.reward)} / ${Object.entries(attestation.ideal)}`)
+        await db.put(attestationKey, attestation)
       }
     }
-  }
 
-  epoch += 1
-  // TODO: store multiple ranges of collected epochs per validator?
-  if (!process.env.OVERRIDE_START_EPOCH) {
-    const updated = []
-    for (const validatorIndex of validatorIdsToConsiderForEpoch.keys()) {
-      const nextEpochKey = `${chainId}/validator/${validatorIndex}/nextEpoch`
-      if ((db.get(nextEpochKey) || 0) < epoch) {
-        updated.push(validatorIndex)
-        await db.put(nextEpochKey, epoch)
+    log(`Getting proposals for ${epoch}`)
+
+    const proposalUrl = new URL(
+      `/eth/v1/validator/duties/proposer/${epoch}`,
+      beaconRpcUrl
+    )
+    const proposals = await fetch(proposalUrl).then(async res => {
+      if (res.status !== 200)
+        throw new Error(`Got ${res.status} fetching proposal duties for epoch ${epoch}: ${await res.text()}`)
+      const json = await res.json()
+      return json.data
+    })
+    for (const {validator_index, slot} of proposals) {
+      if (validatorIds.has(validator_index)) {
+        const proposalKey = `${chainId}/validator/${validator_index}/proposal/${slot}`
+        const proposal = db.get(proposalKey) || {}
+        if (!('reward' in proposal)) {
+          const proposalRewardUrl = new URL(`/eth/v1/beacon/rewards/blocks/${slot}`, beaconRpcUrl)
+          const response = await fetch(proposalRewardUrl)
+          if (response.status === 404) {
+            log(`Adding missed proposal for ${validator_index} @ ${slot}`)
+            proposal.missed = true
+            proposal.reward = '0'
+          }
+          else if (response.status === 200) {
+            log(`Adding proposal reward for ${validator_index} @ ${slot}`)
+            const reward = await response.json().then(j => j.data.total)
+            proposal.reward = reward
+          }
+          else throw new Error(`Got ${response.status} fetching block rewards @ ${slot}`)
+          await db.put(proposalKey, proposal)
+        }
       }
     }
-    if (updated.length)
-      log(`Updated nextEpoch to ${epoch} for ${updated}`)
+
+    epoch += 1
+    if (!process.env.OVERRIDE_START_EPOCH) {
+      const updated = []
+      for (const validatorIndex of validatorIds.keys()) {
+        const nextEpochKey = `${chainId}/validator/${validatorIndex}/nextEpoch`
+        if ((db.get(nextEpochKey) || 0) < epoch) {
+          updated.push(validatorIndex)
+          await db.put(nextEpochKey, epoch)
+        }
+      }
+      if (updated.length)
+        log(`Updated nextEpoch to ${epoch} for ${updated}`)
+    }
   }
 }
 
-await db.close()
+process.on('SIGINT', async () => {
+  await db.close()
+  process.exit()
+})
+
+if (process.env.OVERRIDE_START_EPOCH || process.env.OVERRIDE_FINAL_EPOCH || !process.env.LISTEN) {
+  await processEpochs()
+  await db.close()
+}
+else {
+  while (true) {
+    await processEpochs()
+    await new Promise(resolve =>
+      setTimeout(resolve, secondsPerSlot * slotsPerEpoch * 1000)
+    )
+  }
+}

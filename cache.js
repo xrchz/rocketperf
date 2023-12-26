@@ -172,7 +172,7 @@ async function getActivationInfo(validatorIndex) {
     if (!minipoolExists)
       throw new Error(`Validator ${validatorIndex} (${pubkey}) has no corresponding minipool (${minipoolAddress})`)
     const minipool = new ethers.Contract(minipoolAddress, minipoolAbi, provider)
-    if (await minipool.getVacant())
+    if (await minipool.getVacant().catch(revert => false))
       throw new Error(`Minipool ${minipoolAddress} (validator ${validatorIndex}) is vacant`)
     const promotions = await minipool.queryFilter('MinipoolPromoted')
     if (promotions.length) {

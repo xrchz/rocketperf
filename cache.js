@@ -132,8 +132,14 @@ async function updateMinipoolPubkeys() {
         log(`Found duplicate minipools for ${pubkey}: ${minipoolAddress} vs ${currentEntry}. Keeping ${activeAddress}.`)
         minipoolsByPubkey.set(pubkey, activeAddress)
       }
-      else
-        minipoolsByPubkey.set(pubkey, minipoolAddress)
+      else {
+        const currentMinipool = new ethers.Contract(currentEntry, minipoolAbi, provider)
+        const currentStatus = await currentMinipool.getStatus()
+        if (currentStatus == statusDissolved)
+          log(`Ignoring minipool ${minipoolAddress} for ${pubkey} because it is dissolved`)
+        else
+          minipoolsByPubkey.set(pubkey, minipoolAddress)
+      }
     }
     incrementMinipoolsByPubkeyCount(n)
     log(`Got pubkeys for ${minipoolsByPubkeyCount} minipools`)

@@ -196,7 +196,7 @@ const rewardsOptionsForEpoch = (validatorIds) => ({
 
 let processedMinipoolCount = 0
 
-const NUM_WORKERS = process.env.NUM_WORKERS ?? 2
+const NUM_WORKERS = parseInt(process.env.NUM_WORKERS) || 2
 
 const workers = Array.from(Array(NUM_WORKERS).keys()).map(
   i => ({
@@ -224,6 +224,8 @@ async function getWorker() {
   data.promise = new Promise(resolve => data.resolveWhenReady = resolve)
   return data.worker
 }
+
+let running = true
 
 async function processEpochs() {
   const targetMinipoolCount = minipoolsByPubkey.size
@@ -274,7 +276,7 @@ async function processEpochs() {
   const epochsToProcess = Array.from(Array(finalEpoch - startEpoch + 1).keys()).map(x => startEpoch + x)
   const pendingEpochs = epochsToProcess.slice()
 
-  while (epochsToProcess.length) {
+  while (running && epochsToProcess.length) {
     log(`${epochsToProcess.length} epochs left to process`)
     const epoch = epochsToProcess.shift()
     const validatorIds = getValidatorsIdsForEpoch(epoch)
@@ -300,7 +302,11 @@ async function processEpochs() {
 }
 
 process.on('SIGINT', async () => {
-  log(`Received interrupt, terminating workers...`)
+  log(`Received interrupt...`)
+  running = false
+  log(`Removing listeners...`)
+  await provider.removeAllListeners('block')
+  log(`Terminating workers...`)
   await Promise.all(workers.map(({promise}) => promise))
   workers.forEach(({worker}) => worker.terminate())
   log(`Closing db...`)

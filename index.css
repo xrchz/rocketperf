@@ -19,9 +19,19 @@ td.withdrawal { /* todo: ens vs address */
 td.selected {
   text-align: center;
 }
-div#slotSelection {
+div#slotSelection, div#slotRangeLimits {
   display: grid;
   grid-template-columns: 1fr 1fr;
+}
+div#slotRangeLimits {
+  margin-bottom: 1em;
+}
+div#slotRangeLimits input[type="number"] {
+  max-width: 8em;
+  color: gray;
+}
+input[type="number"][readonly] {
+  appearance: textfield;
 }
 ul#entityFailures {
   list-style-type: none;

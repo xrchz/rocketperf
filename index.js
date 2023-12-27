@@ -33,7 +33,7 @@ titleHeading.innerText = '🚀 RocketPerv 📉'
 entryHeading.innerText = 'Enter Validators'
 selectedHeading.innerText = 'Selected Validators'
 perfHeading.innerText = 'Performance of Selected Validators'
-slotsHeading.innerText = 'Time Range (UTC only for now) (till finalized slot)'
+slotsHeading.innerText = 'Time Range (UTC)'
 summaryHeading.innerText = 'Summary'
 detailsHeading.innerText = 'Details'
 
@@ -176,23 +176,47 @@ const fromSlot = document.createElement('input')
 const toSlotLabel = document.createElement('label')
 const toSlot = document.createElement('input')
 ;[fromSlotLabel, toSlotLabel].forEach(e => e.classList.add('slotLabel'))
+
+const slotRangeLimitsDiv = document.createElement('div')
+slotRangeLimitsDiv.id = 'slotRangeLimits'
+const limitFromDateLabel = document.createElement('label')
+const limitFromDate = document.createElement('input')
+const limitFromTimeLabel = document.createElement('label')
+const limitFromTime = document.createElement('input')
+const limitToDateLabel = document.createElement('label')
+const limitToDate = document.createElement('input')
+const limitToTimeLabel = document.createElement('label')
+const limitToTime = document.createElement('input')
+const limitFromSlotLabel = document.createElement('label')
+const limitFromSlot = document.createElement('input')
+const limitToSlotLabel = document.createElement('label')
+const limitToSlot = document.createElement('input')
+
 const slotRangeLimits = {min: 0, max: Infinity}
 socket.emit('slotRangeLimits', [])
-// TODO: display slot range limits and corresponding times in readonly inputs
+
+const limitFromDateTime = document.createElement('div')
+const limitToDateTime = document.createElement('div')
+limitFromDateTime.append(limitFromDateLabel, limitFromTimeLabel)
+limitToDateTime.append(limitToDateLabel, limitToTimeLabel)
+slotRangeLimitsDiv.append(
+  limitFromDateTime, limitToDateTime,
+  limitFromSlotLabel, limitToSlotLabel
+)
+
+// TODO: add buttons to use the min/max slots
 
 // TODO: add free-form text selectors for times too?
 
-;[fromDate, toDate].forEach(e => e.type = 'date')
-;[fromTime, toTime].forEach(e => {
+;[fromDate, toDate, limitFromDate, limitToDate].forEach(e => e.type = 'date')
+;[fromTime, toTime, limitFromTime, limitToTime].forEach(e => {
   e.type = 'time'
   e.step = 1
 })
-;[fromSlot, toSlot].forEach(e => {
-  e.type = 'number'
-  e.dataset.prevValue = e.value
-})
-;[fromDate, fromTime, fromSlot].forEach(e => e.dataset.dir = 'from')
-;[toDate, toTime, toSlot].forEach(e => e.dataset.dir = 'to')
+;[fromSlot, toSlot, limitFromSlot, limitToSlot].forEach(e => e.type = 'number')
+;[fromSlot, toSlot].forEach(e => e.dataset.prevValue = e.value)
+;[fromDate, fromTime, fromSlot, limitFromDate, limitFromTime, limitFromSlot].forEach(e => e.dataset.dir = 'from')
+;[toDate, toTime, toSlot, limitToDate, limitToTime, limitToSlot].forEach(e => e.dataset.dir = 'to')
 fromSlotLabel.append(
   document.createTextNode('From slot: '),
   fromSlot
@@ -211,6 +235,24 @@ toDateLabel.append(
   toDate
 )
 toTimeLabel.append(toTime)
+limitFromSlotLabel.append(
+  document.createTextNode('Min (activation) slot: '),
+  limitFromSlot
+)
+limitToSlotLabel.append(
+  document.createTextNode('Max (finalized) slot: '),
+  limitToSlot
+)
+limitFromDateLabel.append(
+  document.createTextNode('Min date: '),
+  limitFromDate
+)
+limitFromTimeLabel.append(limitFromTime)
+limitToDateLabel.append(
+  document.createTextNode('Max date: '),
+  limitToDate
+)
+limitToTimeLabel.append(limitToTime)
 
 const thisUrl = new URL(window.location)
 // TODO: handle URL length limits - just drop some validators?
@@ -236,6 +278,17 @@ const updatePerformanceDetails = () => {
   }
 }
 
+const setTimeFromSlot = ({slot, dateInput, timeInput}) =>
+  new Promise(resolve =>
+    socket.emit('slotToTime', slot,
+      ({date, time}) => {
+        dateInput.value = date
+        timeInput.value = time
+        resolve()
+      }
+    )
+  )
+
 async function updateSlotRange() {
   const fromOld = fromSlot.dataset.prevValue
   const toOld = toSlot.dataset.prevValue
@@ -253,16 +306,7 @@ async function updateSlotRange() {
   await Promise.all(
     [{slot: fromNew, dateInput: fromDate, timeInput: fromTime},
      {slot: toNew, dateInput: toDate, timeInput: toTime}].map(
-       ({slot, dateInput, timeInput}) =>
-       new Promise(resolve =>
-         socket.emit('slotToTime', slot,
-           ({date, time}) => {
-             dateInput.value = date
-             timeInput.value = time
-             resolve()
-           }
-         )
-       )
+       setTimeFromSlot
      )
   )
 
@@ -707,7 +751,14 @@ socket.on('minipools', minipools => {
 socket.on('slotRangeLimits', ({min, max}) => {
   slotRangeLimits.min = min
   slotRangeLimits.max = max
-  updateSlotRange()
+  limitFromSlot.value = min
+  limitToSlot.value = max
+  Promise.all(
+    [{slot: min, dateInput: limitFromDate, timeInput: limitFromTime},
+     {slot: max, dateInput: limitToDate, timeInput: limitToTime}].map(
+       setTimeFromSlot
+     )
+  ).then(updateSlotRange)
 })
 
 socket.on('unknownEntities', entities => {
@@ -737,6 +788,7 @@ body.append(
   minipoolsList,
   perfHeading,
   slotsHeading,
+  slotRangeLimitsDiv,
   slotSelectionDiv,
   summaryHeading,
   allSummaryTable,
@@ -744,6 +796,10 @@ body.append(
   detailsHeading,
   detailsDiv,
   footerDiv
+)
+
+slotRangeLimitsDiv.querySelectorAll('input').forEach(
+  x => x.setAttribute('readonly', '')
 )
 
 const initialUrlIndices = thisUrl.searchParams.getAll('v')
@@ -759,3 +815,6 @@ if (initialUrlIndices.length) {
     e.dispatchEvent(new Event('change'))
   }
 })
+
+// TODO: ensure searchParams aren't overridden on initial load if they are valid
+// probably need to wait for the entity response before changing the slots?

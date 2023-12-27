@@ -142,14 +142,9 @@ async function processEpoch(epoch, validatorIds) {
       for (const validatorIndex of validatorIds.keys()) {
         const syncKey = `${chainId}/validator/${validatorIndex}/sync/${epoch}`
         const sync = db.get(syncKey)
-        if (sync) {
-          if (!syncBits[sync.position] && !sync.missed.includes(searchSlot)) {
-            sync.missed.push(searchSlot)
-            await db.put(syncKey, sync)
-          }
-          else {
-            log(`Adding sync message for ${searchSlot} for validator ${validatorIndex}`)
-          }
+        if (sync && !syncBits[sync.position] && !sync.missed.includes(searchSlot)) {
+          sync.missed.push(searchSlot)
+          await db.put(syncKey, sync)
         }
       }
 

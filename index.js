@@ -178,6 +178,7 @@ const toSlot = document.createElement('input')
 ;[fromSlotLabel, toSlotLabel].forEach(e => e.classList.add('slotLabel'))
 const slotRangeLimits = {min: 0, max: Infinity}
 socket.emit('slotRangeLimits', [])
+// TODO: display slot range limits and corresponding times in readonly inputs
 
 // TODO: add free-form text selectors for times too?
 
@@ -212,6 +213,7 @@ toDateLabel.append(
 toTimeLabel.append(toTime)
 
 const thisUrl = new URL(window.location)
+// TODO: handle URL length limits - just drop some validators?
 
 const minipoolsInTable = () => Array.from(
   minipoolsList.querySelectorAll('td.minipool > a')
@@ -600,6 +602,8 @@ socket.on('perfDetails', data => {
             return t ? [`${k[0].toUpperCase()}: ${t}`] : []
           })
         dayDiv.title = titleLines.join('\n')
+        if (dayObj.proposals.duties)
+          dayDiv.classList.add('proposer')
         addTotals(dayObj)
       }
     }
@@ -629,9 +633,7 @@ socket.on('perfDetails', data => {
 
 // TODO: add loading (and out-of-date) indication for results/details
 
-// TODO: add decoration to days with proposals
-
-// TODO: list proposal slots in day title
+// TODO: list proposal slots in day title (and/or somewhere else)
 
 // TODO: add selector for subperiod sizes (instead of year/month/day)?
 

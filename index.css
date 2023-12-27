@@ -88,7 +88,6 @@ div.month {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 0.2em;
-  max-width: 16em;
 }
 div.yearContainer, div.monthContainer {
   display: flex;
@@ -106,6 +105,9 @@ div.yearContainer > span {
 div.day.spacer {
   background-color: orange;
 }
+div.day.proposer {
+  border: medium solid gold;
+}
 div.day {
   height: 2em;
   width: 2em;
@@ -113,6 +115,7 @@ div.day {
   margin: auto;
   align-items: center;
   justify-content: center;
+  border: medium solid transparent;
 }
 div.day > span {
   font-size: smaller;

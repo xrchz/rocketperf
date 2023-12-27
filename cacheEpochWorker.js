@@ -131,7 +131,7 @@ async function processEpoch(epoch, validatorIds) {
         if (attestation?.slot == slot && attestation.index == index && !(attestation.attested?.slot <= searchSlot)) {
           if (attestedBits[attestation.position]) {
             attestation.attested = { slot: searchSlot, head: beacon_block_root, source, target }
-            log(`Adding attestation for ${slot} (${attestationEpoch}) for validator ${validatorIndex} ${JSON.stringify(attestation.attested)}`)
+            log(`Adding attestation for ${slot} (${attestationEpoch}) for validator ${validatorIndex} @ ${searchSlot}`)
             await db.put(attestationKey, attestation)
           }
         }

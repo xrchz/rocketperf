@@ -303,6 +303,10 @@ async function processEpochs() {
 
 process.on('SIGINT', async () => {
   log(`Received interrupt...`)
+  if (!running) {
+    log(`Alreading shutting down...`)
+    return
+  }
   running = false
   log(`Removing listeners...`)
   await provider.removeAllListeners('block')

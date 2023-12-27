@@ -692,7 +692,7 @@ socket.on('minipools', minipools => {
   for (const {minipoolAddress, minipoolEnsName,
               nodeAddress, nodeEnsName,
               withdrawalAddress, withdrawalEnsName,
-              validatorIndex, selected} of minipools) {
+              validatorIndex} of minipools) {
     const tr = frag.appendChild(document.createElement('tr'))
     const mpA = document.createElement('a')
     mpA.href = `https://rocketscan.io/minipool/${minipoolAddress}`
@@ -708,7 +708,7 @@ socket.on('minipools', minipools => {
     valA.innerText = validatorIndex
     const sel = document.createElement('input')
     sel.type = 'checkbox'
-    sel.checked = selected
+    sel.checked = true
     sel.addEventListener('change', updateIncludeAllChecked, {passive: true})
     sel.addEventListener('change',
       () => {
@@ -742,8 +742,9 @@ socket.on('minipools', minipools => {
   if (minipools.length) {
     minipoolsList.classList.remove('hidden')
     slotRangeLimits.validatorsChanged = true
-    socket.volatile.emit('slotRangeLimits', minipools.flatMap(({validatorIndex, selected}) =>
-      selected ? [validatorIndex] : []))
+    socket.volatile.emit('slotRangeLimits',
+      minipools.map(({validatorIndex}) => validatorIndex)
+    )
   }
   else minipoolsList.classList.add('hidden')
 })

@@ -58,7 +58,7 @@ log(`Node Manager: ${await rocketNodeManager.getAddress()}`)
 
 const isNumber = /^[1-9]\d*$/
 
-// TODO: cache entities, including selectedness (per socketid?)
+// TODO: cache entities per socketid?
 
 // TODO: memoise? -- modulo withdrawalAddress and ens names (or store block)
 async function lookupMinipool({minipoolAddress, nodeInfo, withdrawalInfo, validatorInfo}) {
@@ -89,8 +89,7 @@ async function lookupMinipool({minipoolAddress, nodeInfo, withdrawalInfo, valida
     nodeEnsName,
     withdrawalAddress,
     withdrawalEnsName,
-    validatorIndex,
-    selected: true
+    validatorIndex
   }
 }
 

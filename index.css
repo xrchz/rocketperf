@@ -25,6 +25,7 @@ div#slotSelection, div#slotRangeLimits {
 }
 div#slotRangeLimits {
   margin-bottom: 1em;
+  column-gap: 1em;
 }
 div#slotRangeLimits input[type="number"] {
   max-width: 8em;

@@ -6,8 +6,6 @@ const idReplacements = new Map([['%', 'P'], ['(', 'L'], [')', 'R']])
 const toId = (s) => s.toLowerCase().replaceAll(
   /\s|%|(|)/g, (x) => idReplacements.get(x) ?? '-')
 
-// TODO: store parts of the state (e.g: minipools, slot range) in URL query
-
 function formatUnits(wei, decimals) {
   const {val, neg} = wei < 0n ? {val: wei * -1n, neg: '-'} : {val: wei, neg: ''}
   const padded = val.toString().padStart(decimals, '0')
@@ -191,6 +189,20 @@ const limitFromSlotLabel = document.createElement('label')
 const limitFromSlot = document.createElement('input')
 const limitToSlotLabel = document.createElement('label')
 const limitToSlot = document.createElement('input')
+const limitFromSlotButton = document.createElement('input')
+const limitToSlotButton = document.createElement('input')
+;[limitFromSlotButton, limitToSlotButton].forEach(e => {
+  e.type = 'button'
+  e.value = 'Use'
+  e.addEventListener('click', () => {
+    const thisInput = e.parentElement.querySelector('input[type="number"]')
+    const slotInput = slotSelectionDiv.querySelector(
+      `input[type="number"][data-dir="${thisInput.dataset.dir}"]`
+    )
+    slotInput.value = thisInput.value
+    slotInput.dispatchEvent(new Event('change'))
+  }, {passive: true})
+})
 
 const slotRangeLimits = {min: 0, max: Infinity}
 socket.emit('slotRangeLimits', [])
@@ -199,9 +211,13 @@ const limitFromDateTime = document.createElement('div')
 const limitToDateTime = document.createElement('div')
 limitFromDateTime.append(limitFromDateLabel, limitFromTimeLabel)
 limitToDateTime.append(limitToDateLabel, limitToTimeLabel)
+const limitFromSlotDiv = document.createElement('div')
+const limitToSlotDiv = document.createElement('div')
+limitFromSlotDiv.append(limitFromSlotLabel, limitFromSlotButton)
+limitToSlotDiv.append(limitToSlotLabel, limitToSlotButton)
 slotRangeLimitsDiv.append(
   limitFromDateTime, limitToDateTime,
-  limitFromSlotLabel, limitToSlotLabel
+  limitFromSlotDiv, limitToSlotDiv
 )
 
 // TODO: add buttons to use the min/max slots

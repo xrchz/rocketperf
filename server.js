@@ -229,7 +229,7 @@ io.on('connection', socket => {
   })
 
   socket.on('slotRangeLimits', async validatorIndices => {
-    const max = await getFinalizedSlot()
+    let max = await getFinalizedSlot()
     let min = max
     for (const validatorIndex of validatorIndices) {
       const activationInfo = db.get(`${chainId}/validator/${validatorIndex}/activationInfo`)
@@ -237,11 +237,17 @@ io.on('connection', socket => {
         console.warn(`No activationInfo for ${validatorIndex} trying to set slotRangeLimits`)
         continue
       }
-      min = Math.min(min,
-        activationInfo.promoted ?
+      const validatorMin = activationInfo.promoted ?
         parseInt(activationInfo.promoted) :
         parseInt(activationInfo.beacon) * slotsPerEpoch
-      )
+      min = Math.min(min, validatorMin)
+      const nextEpoch = db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`)
+      if (typeof nextEpoch != 'number') {
+        console.warn(`No nextEpoch for ${validatorIndex} trying to set slotRangeLimits`)
+        max = Math.min(max, validatorMin)
+      }
+      else
+        max = Math.min(max, nextEpoch * slotsPerEpoch)
     }
     socket.emit('slotRangeLimits', {min, max})
   })
@@ -269,7 +275,6 @@ io.on('connection', socket => {
       const nextEpoch = db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`)
       if (typeof(nextEpoch) != 'number' || nextEpoch < epochOfSlot(toSlot)) {
         console.warn(`Failed to include perfDetails for ${minipoolAddress}: epoch ${nextEpoch} no good for ${fromSlot}-${toSlot}`)
-        // TODO: update db instead?
         continue
       }
       // TODO: skip slots that are before this validator became active in rocket pool

@@ -227,6 +227,52 @@ async function getWorker() {
 
 let running = true
 
+async function processEpochsLoop(finalizedSlot, dutiesOnly) {
+  const uptoKey = dutiesOnly ? `dutiesEpoch` : `nextEpoch`
+
+  const startEpoch = arrayMin(
+    Array.from(validatorStartEpochs.entries()).map(
+      ([validatorIndex, activationEpoch]) =>
+      Math.max(
+        db.get(`${chainId}/validator/${validatorIndex}/${uptoKey}`) ?? 0,
+        activationEpoch
+      )
+    )
+  )
+
+  const finalEpoch = epochOfSlot(finalizedSlot - 1)
+
+  log(`Getting ${dutiesOnly ? 'attestation duties' : 'data'} for epochs ${startEpoch} through ${finalEpoch}`)
+  const epochsToProcess = Array.from(Array(finalEpoch - startEpoch + 1).keys()).map(x => startEpoch + x)
+  const pendingEpochs = epochsToProcess.slice()
+
+  const processMsg = dutiesOnly ? 'attestation duties' : 'remaining data'
+
+  while (running && epochsToProcess.length) {
+    log(`${epochsToProcess.length} epochs left to process ${processMsg}`)
+    const epoch = epochsToProcess.shift()
+    const validatorIds = getValidatorsIdsForEpoch(epoch)
+    const worker = await getWorker()
+    worker.prependOnceListener('message', async () => {
+      const epochIndex = pendingEpochs.indexOf(epoch)
+      pendingEpochs.splice(epochIndex, 1)
+      if (epochIndex == 0) {
+        const updated = []
+        for (const validatorIndex of validatorIds.keys()) {
+          const nextEpochKey = `${chainId}/validator/${validatorIndex}/${uptoKey}`
+          if ((db.get(nextEpochKey) || 0) < epoch) {
+            updated.push(validatorIndex)
+            await db.put(nextEpochKey, epoch)
+          }
+        }
+        if (updated.length)
+          log(`Updated ${uptoKey} to ${epoch} for ${updated}`)
+      }
+    })
+    worker.postMessage({epoch, validatorIds, dutiesOnly})
+  }
+}
+
 async function processEpochs() {
   const targetMinipoolCount = minipoolsByPubkey.size
 
@@ -259,46 +305,8 @@ async function processEpochs() {
   )
 
   const finalizedSlot = await getFinalizedSlot()
-
-  const startEpoch = arrayMin(
-    Array.from(validatorStartEpochs.entries()).map(
-      ([validatorIndex, activationEpoch]) =>
-      Math.max(
-        db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`) ?? 0,
-        activationEpoch
-      )
-    )
-  )
-
-  const finalEpoch = epochOfSlot(finalizedSlot - 1)
-
-  log(`Getting data for epochs ${startEpoch} through ${finalEpoch}`)
-  const epochsToProcess = Array.from(Array(finalEpoch - startEpoch + 1).keys()).map(x => startEpoch + x)
-  const pendingEpochs = epochsToProcess.slice()
-
-  while (running && epochsToProcess.length) {
-    log(`${epochsToProcess.length} epochs left to process`)
-    const epoch = epochsToProcess.shift()
-    const validatorIds = getValidatorsIdsForEpoch(epoch)
-    const worker = await getWorker()
-    worker.prependOnceListener('message', async () => {
-      const epochIndex = pendingEpochs.indexOf(epoch)
-      pendingEpochs.splice(epochIndex, 1)
-      if (epochIndex == 0) {
-        const updated = []
-        for (const validatorIndex of validatorIds.keys()) {
-          const nextEpochKey = `${chainId}/validator/${validatorIndex}/nextEpoch`
-          if ((db.get(nextEpochKey) || 0) < epoch) {
-            updated.push(validatorIndex)
-            await db.put(nextEpochKey, epoch)
-          }
-        }
-        if (updated.length)
-          log(`Updated nextEpoch to ${epoch} for ${updated}`)
-      }
-    })
-    worker.postMessage({epoch, validatorIds})
-  }
+  await processEpochsLoop(finalizedSlot, true)
+  await processEpochsLoop(finalizedSlot, false)
 }
 
 process.on('SIGINT', async () => {

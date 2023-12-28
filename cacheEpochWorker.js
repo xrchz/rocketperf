@@ -35,19 +35,15 @@ const rewardsOptionsForEpoch = (validatorIds) => ({
   body: JSON.stringify(Array.from(validatorIds.keys()))
 })
 
-async function processEpoch(epoch, validatorIds) {
-  log(`Processing epoch ${epoch}`)
+async function getAttestationDuties(epoch, validatorIds) {
+  log(`Getting attestation duties for ${epoch}`)
 
   if (!validatorIds.size) {
     console.warn(`${epoch} has no relevant active validators`)
     return
   }
 
-  const rewardsOptions = rewardsOptionsForEpoch(validatorIds)
-
   const firstSlotInEpoch = epoch * slotsPerEpoch
-
-  log(`Getting attestation duties for ${epoch}`)
 
   const attestationDutiesUrl = new URL(
     `/eth/v1/beacon/states/${firstSlotInEpoch}/committees?epoch=${epoch}`,
@@ -74,6 +70,19 @@ async function processEpoch(epoch, validatorIds) {
       }
     }
   }
+}
+
+async function processEpoch(epoch, validatorIds) {
+  log(`Processing epoch ${epoch}`)
+
+  if (!validatorIds.size) {
+    console.warn(`${epoch} has no relevant active validators`)
+    return
+  }
+
+  const rewardsOptions = rewardsOptionsForEpoch(validatorIds)
+
+  const firstSlotInEpoch = epoch * slotsPerEpoch
 
   log(`Getting sync duties for ${epoch}`)
 
@@ -250,7 +259,8 @@ async function processEpoch(epoch, validatorIds) {
   }
 }
 
-parentPort.on('message', async ({epoch, validatorIds}) => {
-  await processEpoch(epoch, validatorIds)
+parentPort.on('message', async ({epoch, validatorIds, dutiesOnly}) => {
+  const fn = dutiesOnly ? getAttestationDuties : processEpoch
+  await fn(epoch, validatorIds)
   parentPort.postMessage('done')
 })

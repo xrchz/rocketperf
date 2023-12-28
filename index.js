@@ -289,7 +289,15 @@ const setTimeFromSlot = ({slot, dateInput, timeInput}) =>
     )
   )
 
+let callAfterValidatorsForSlots
+
 async function updateSlotRange() {
+
+  if (typeof callAfterValidatorsForSlots == 'function') {
+    console.log(`Skipping updateSlotRange for callAfterValidatorsForSlots`)
+    return
+  }
+
   const fromOld = fromSlot.dataset.prevValue
   const toOld = toSlot.dataset.prevValue
   let [fromNew, toNew] = [fromSlot.value, toSlot.value].map(x => parseInt(x))
@@ -346,8 +354,6 @@ async function updateSlotRange() {
     console.log(`Unchanged (ignored): ${fromOld} - ${toOld} to ${fromNew} - ${toNew}`)
   }
 }
-
-// TODO: handle popstate event on window and set slots accordingly
 
 const timeSelectionHandler = (e) => {
   const dir = e.target.dataset.dir
@@ -688,7 +694,7 @@ socket.on('perfDetails', data => {
 // TODO: look into execution layer rewards too? probably ask for more money to implement that
 
 socket.on('minipools', minipools => {
-  console.log(`Received minipools`)
+  console.log(`Received ${minipools.length} minipools`)
   for (const {minipoolAddress, minipoolEnsName,
               nodeAddress, nodeEnsName,
               withdrawalAddress, withdrawalEnsName,
@@ -747,6 +753,8 @@ socket.on('minipools', minipools => {
     )
   }
   else minipoolsList.classList.add('hidden')
+  if (typeof callAfterValidatorsForSlots == 'function')
+    callAfterValidatorsForSlots()
 })
 
 socket.on('slotRangeLimits', ({min, max}) => {
@@ -803,19 +811,36 @@ slotRangeLimitsDiv.querySelectorAll('input').forEach(
   x => x.setAttribute('readonly', '')
 )
 
-const initialUrlIndices = thisUrl.searchParams.getAll('v')
-if (initialUrlIndices.length) {
-  entityEntryBox.value = initialUrlIndices.join('\n')
-  entityEntryBox.dispatchEvent(new Event('change'))
+async function setParamsFromUrl() {
+  thisUrl.href = window.location
+
+  console.log(`Setting params from ${thisUrl.searchParams}`)
+  const slotsToSet = [fromSlot, toSlot].map(input => (
+    {input, slot: thisUrl.searchParams.get(`${input.dataset.dir}Slot`)}
+  ))
+
+  let promise
+
+  const urlValidators = thisUrl.searchParams.getAll('v')
+  if (urlValidators.length) {
+    promise = new Promise(resolve => callAfterValidatorsForSlots = resolve)
+    entityEntryBox.value = urlValidators.join('\n')
+    entityEntryBox.dispatchEvent(new Event('change'))
+  }
+
+  await promise.then(() => callAfterValidatorsForSlots = undefined)
+
+  promise = false
+  slotsToSet.forEach(({input, slot}) => {
+    if ((slot || slot === 0) && input.value != slot) {
+      input.dataset.prevValue = input.value
+      input.value = slot
+      promise = true
+    }
+  })
+  if (promise) await updateSlotRange()
 }
 
-;[fromSlot, toSlot].forEach(e => {
-  const slot = thisUrl.searchParams.get(`${e.dataset.dir}Slot`)
-  if ((slot || slot === 0) && e.value != slot) {
-    e.value = slot
-    e.dispatchEvent(new Event('change'))
-  }
-})
+window.addEventListener('popstate', setParamsFromUrl, {passive: true})
 
-// TODO: ensure searchParams aren't overridden on initial load if they are valid
-// probably need to wait for the entity response before changing the slots?
+setParamsFromUrl()

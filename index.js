@@ -220,8 +220,6 @@ slotRangeLimitsDiv.append(
   limitFromSlotDiv, limitToSlotDiv
 )
 
-// TODO: add buttons to use the min/max slots
-
 // TODO: add free-form text selectors for times too?
 
 ;[fromDate, toDate, limitFromDate, limitToDate].forEach(e => e.type = 'date')
@@ -271,7 +269,7 @@ limitToDateLabel.append(
 limitToTimeLabel.append(limitToTime)
 
 const thisUrl = new URL(window.location)
-// TODO: handle URL length limits - just drop some validators?
+// TODO: handle URL length limits - just drop some validators? or make a compressed string?
 
 const minipoolsInTable = () => Array.from(
   minipoolsList.querySelectorAll('td.minipool > a')
@@ -616,11 +614,11 @@ const addTotal = (t, d) => Object.keys(t).forEach(k => t[k] += d[k])
 // TODO: make weekday start configurable (Sun vs Mon)
 
 socket.on('perfDetails', data => {
-  // <data> = { <year>: {<month>: {<day>: {attestations: <dutyData>, proposals: <dutyData>, syncs: <dutyData>}, ...}, ...}, ...}
-  // <dutyData> = { duties: <num>, missed: <num>, reward: <string(bigint)> }
+  // <data> = { <year>: {<month>: {<day>: {attestations: <dutyData>, proposals: <dutyData>, syncs: <dutyData>, slots: {min: <num>, max: <num>}}, ...}, ...}, ...}
+  // <dutyData> = { duties: <num>, missed: <num>, reward: <string(bigint)>, slots: <Array[num]> }
   // console.log(`Received perfDetails: ${JSON.stringify(data)}`)
   const totals = {...emptyDay()}
-  const addTotals = (day) => Object.entries(day).forEach(([k, v]) => addTotal(totals[k], v))
+  const addTotals = (day) => Object.entries(day).forEach(([k, v]) => k != 'slots' && addTotal(totals[k], v))
   for (const year of Object.keys(data).map(k => parseInt(k)).toSorted(compareNumbers)) {
     const yearContainer = frag.appendChild(document.createElement('div'))
     yearContainer.classList.add('yearContainer')
@@ -647,7 +645,7 @@ socket.on('perfDetails', data => {
         const dayDiv = monthDiv.appendChild(document.createElement('div'))
         dayDiv.classList.add('day')
         dayDiv.appendChild(document.createElement('span')).innerText = day
-        const {totalDuties, totalMissed} = Object.values(dayObj).reduce(
+        const {totalDuties, totalMissed} = Object.values(dayObj).filter(d => 'duties' in d).reduce(
           ({totalDuties, totalMissed}, {duties, missed}) =>
           ({totalDuties: totalDuties + duties, totalMissed: totalMissed + missed}),
           {totalDuties: 0, totalMissed: 0}
@@ -657,16 +655,21 @@ socket.on('perfDetails', data => {
           (totalMissed ? Math.round(performance * 10) * 10 : 'all')
           : 'nil'
         dayDiv.classList.add(`perf${performanceDecile}`)
-        const dayObjKeys = Object.keys(dayObj)
+        const dayObjKeys = Object.keys(dayObj).slice(0, -1)
         dayObjKeys.forEach(k => dayObj[k].reward = BigInt(dayObj[k].reward))
+        const proposalSlots = (key, slots) => key === 'proposals' ? ` (${slots.join(',')})` : ''
+        const dutyLine = (key, {duties, missed, reward, slots}) =>
+          `${duties - missed}/${duties}${proposalSlots(key, slots)}: ${formatGwei(reward)} gwei`
         const dutyTitle = (key) => (
           (dayObj[key].duties || dayObj[key].reward) &&
-          `${dayObj[key].duties - dayObj[key].missed}/${dayObj[key].duties}: ${formatGwei(dayObj[key].reward)} gwei`
+          dutyLine(key, dayObj[key])
         )
-        const titleLines = dayObjKeys.flatMap(k => {
+        const titleLines = [`${dayObj.slots.min}–${dayObj.slots.max}`].concat(
+          dayObjKeys.flatMap(k => {
             const t = dutyTitle(k)
             return t ? [`${k[0].toUpperCase()}: ${t}`] : []
           })
+        )
         dayDiv.title = titleLines.join('\n')
         if (dayObj.proposals.duties)
           dayDiv.classList.add('proposer')
@@ -696,18 +699,6 @@ socket.on('perfDetails', data => {
     summaryTable.classList.add('hidden')
   }
 })
-
-// TODO: add loading (and out-of-date) indication for results/details
-
-// TODO: list proposal slots in day title (and/or somewhere else)
-
-// TODO: add selector for subperiod sizes (instead of year/month/day)?
-
-// TODO: add copy for whole table?
-
-// TODO: add NO portion of rewards separately from validator rewards? (need to track commission and borrow)
-
-// TODO: look into execution layer rewards too? probably ask for more money to implement that
 
 socket.on('minipools', minipools => {
   console.log(`Received ${minipools.length} minipools`)
@@ -860,3 +851,13 @@ async function setParamsFromUrl() {
 window.addEventListener('popstate', setParamsFromUrl, {passive: true})
 
 setParamsFromUrl()
+
+// TODO: fix slot selection from URL on initial load
+// TODO: fix ascending/descending icons for sort buttons
+// TODO: add loading (and out-of-date) indication for results/details
+// TODO: list proposal slots in day title (and/or somewhere else)
+// TODO: add NO portion of rewards separately from validator rewards? (need to track commission and borrow)
+// TODO: add copy for whole table?
+// TODO: make certain css colors (and maybe other styles) editable?
+// TODO: add selector for subperiod sizes (instead of year/month/day)?
+// TODO: look into execution layer rewards too? probably ask for more money to implement that

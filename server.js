@@ -192,15 +192,23 @@ function dateToDateTime(theDate) {
   return {date, time}
 }
 
-const emptyDutyData = { duties: 0, missed: 0, reward: 0n }
+const emptyDutyData = () => ({ duties: 0, missed: 0, reward: 0n, slots: new Set() })
 const emptyDay = () => ({
-  attestations: {...emptyDutyData},
-  proposals: {...emptyDutyData},
-  syncs: {...emptyDutyData}
+  attestations: {...emptyDutyData()},
+  proposals: {...emptyDutyData()},
+  syncs: {...emptyDutyData()},
+  slots: {min: Infinity, max: 0}
 })
-const mergeIntoDuty = (d, x) => Object.keys(d).forEach(k => d[k] += x[k])
-const mergeIntoDay = (day, r) => Object.entries(day).forEach(([k, duty]) => {
-  if (k in r) mergeIntoDuty(duty, r[k])
+const mergeIntoDuty = (d, x) => Object.keys(d).forEach(k =>
+  k == 'slots' ? x[k].forEach(v => d[k].add(v))
+  : d[k] += x[k]
+)
+const mergeIntoDay = (day, r, slot) => Object.entries(day).forEach(([k, duty]) => {
+  if (k == 'slots') {
+    duty.min = Math.min(duty.min, slot)
+    duty.max = Math.max(duty.max, slot)
+  }
+  else if (k in r) mergeIntoDuty(duty, r[k])
 })
 
 io.on('connection', socket => {
@@ -283,31 +291,36 @@ io.on('connection', socket => {
         const epoch = epochOfSlot(slot)
         const attestation = db.get(`${chainId}/validator/${validatorIndex}/attestation/${epoch}`)
         if (attestation?.slot === slot) {
-          const attestations = result.attestations || {...emptyDutyData}
+          const attestations = result.attestations || {...emptyDutyData()}
           attestations.duties += 1
           if (!attestation.attested)
             attestations.missed += 1
           for (const rewardType of ['head', 'target', 'source', 'inactivity'])
             attestations.reward += BigInt(attestation.reward[rewardType])
+          attestations.slots.add(slot)
           result.attestations = attestations
         }
 
         const proposal = db.get(`${chainId}/validator/${validatorIndex}/proposal/${slot}`)
         if (proposal) {
-          const proposals = result.proposals || {...emptyDutyData}
+          const proposals = result.proposals || {...emptyDutyData()}
           proposals.duties += 1
           if (proposal.missed)
             proposals.missed += 1
           proposals.reward += BigInt(proposal.reward)
+          proposals.slots.add(slot)
           result.proposals = proposals
         }
 
         const sync = db.get(`${chainId}/validator/${validatorIndex}/sync/${epoch}`)
-        if (sync) {
-          const syncs = result.syncs || {...emptyDutyData}
-          syncs.duties += sync.rewards.length // may be < 32 if blocks were missed
-          syncs.missed += sync.missed.length
-          syncs.reward += sync.rewards.reduce((a, {reward}) => a + BigInt(reward), 0n)
+        const syncReward = sync?.rewards.find(({slot: syncSlot}) => slot == syncSlot)
+        const syncMissed = sync?.missed.includes(slot)
+        if (syncReward || syncMissed) {
+          const syncs = result.syncs || {...emptyDutyData()}
+          syncs.duties += 1
+          syncs.missed += syncMissed
+          syncs.reward += BigInt(syncReward.reward)
+          syncs.slots.add(slot)
           result.syncs = syncs
         }
       }
@@ -320,8 +333,8 @@ io.on('connection', socket => {
     let currentYear = {[currentMonthKey]: currentMonth}
     let currentYearKey = date.getUTCFullYear()
     const perfDetails = {[currentYearKey]: currentYear}
-    for (const results of resultsBySlot.values()) {
-      mergeIntoDay(currentDay, results)
+    for (const [slotOffset, results] of resultsBySlot.entries()) {
+      mergeIntoDay(currentDay, results, fromSlot + slotOffset)
       date.setMilliseconds(secondsPerSlot * 1000)
       if (currentDayKey !== date.getUTCDate()) {
         currentDay = {...emptyDay()}
@@ -342,8 +355,11 @@ io.on('connection', socket => {
     Object.values(perfDetails).forEach(year =>
       Object.values(year).forEach(month =>
         Object.values(month).forEach(day =>
-          Object.values(day).forEach(duty =>
-            duty.reward = duty.reward.toString()))))
+          Object.entries(day).forEach(([key, duty]) => {
+            if (key == 'slots') return
+            duty.reward = duty.reward.toString()
+            duty.slots = Array.from(duty.slots).toSorted((a, b) => a - b)
+          }))))
     socket.emit('perfDetails', perfDetails)
   })
 

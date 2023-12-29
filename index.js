@@ -2,6 +2,11 @@ const socket = io()
 const frag = document.createDocumentFragment()
 const body = document.querySelector('body')
 
+const compressIndices = (a) => a.map(i => parseInt(i).toString(36)).join('-')
+const decompressIndices = (s) => s ?
+  s.split('-').map(x => parseInt(x, 36))
+  : []
+
 const idReplacements = new Map([['%', 'P'], ['(', 'L'], [')', 'R']])
 const toId = (s) => s.toLowerCase().replaceAll(
   /\s|%|(|)/g, (x) => idReplacements.get(x) ?? '-')
@@ -348,13 +353,12 @@ async function updateSlotRange() {
       toSlot.value = toNew
       fromSlot.dataset.prevValue = fromSlot.value
       toSlot.dataset.prevValue = toSlot.value
-      thisUrl.searchParams.set('fromSlot', fromNew)
-      thisUrl.searchParams.set('toSlot', toNew)
+      thisUrl.searchParams.set('f', fromNew)
+      thisUrl.searchParams.set('t', toNew)
     }
     if (slotRangeLimits.validatorsChanged) {
-      thisUrl.searchParams.delete('v')
-      validatorIndicesInTable().forEach(i =>
-        thisUrl.searchParams.append('v', i)
+      thisUrl.searchParams.set('v',
+        compressIndices(validatorIndicesInTable())
       )
     }
     window.history.pushState(null, '', thisUrl)
@@ -818,12 +822,12 @@ async function setParamsFromUrl() {
 
   console.log(`Setting params from ${thisUrl.searchParams}`)
   const slotsToSet = [fromSlot, toSlot].map(input => (
-    {input, slot: thisUrl.searchParams.get(`${input.dataset.dir}Slot`)}
+    {input, slot: thisUrl.searchParams.get(`${input.dataset.dir[0]}`)}
   ))
 
   let promise
 
-  const urlValidators = thisUrl.searchParams.getAll('v')
+  const urlValidators = decompressIndices(thisUrl.searchParams.get('v'))
   if (urlValidators.length) {
     promise = new Promise(resolve => waitingForMinipools.push(resolve))
     entityEntryBox.value = urlValidators.join('\n')

@@ -102,9 +102,9 @@ minipoolsList.appendChild(document.createElement('tr'))
       const bUp = document.createElement('input')
       const bDown = document.createElement('input')
       const bCopy = document.createElement('input')
-      bUp.value = '⬆️'
+      bUp.value = '⬇️'
+      bDown.value = '⬆️'
       bUp.title = 'sort column ascending'
-      bDown.value = '⬇️'
       bDown.title = 'sort column descending'
       bCopy.value = '📋'
       bCopy.title = 'copy unique included column items'
@@ -168,7 +168,6 @@ const toDateLabel = document.createElement('label')
 const toDate = document.createElement('input')
 const toTimeLabel = document.createElement('label')
 const toTime = document.createElement('input')
-// const timezoneLabel = document.createElement('label') TODO: add this later?
 const fromSlotLabel = document.createElement('label')
 const fromSlot = document.createElement('input')
 const toSlotLabel = document.createElement('label')
@@ -220,8 +219,6 @@ slotRangeLimitsDiv.append(
   limitFromSlotDiv, limitToSlotDiv
 )
 
-// TODO: add free-form text selectors for times too?
-
 ;[fromDate, toDate, limitFromDate, limitToDate].forEach(e => e.type = 'date')
 ;[fromTime, toTime, limitFromTime, limitToTime].forEach(e => {
   e.type = 'time'
@@ -269,7 +266,6 @@ limitToDateLabel.append(
 limitToTimeLabel.append(limitToTime)
 
 const thisUrl = new URL(window.location)
-// TODO: handle URL length limits - just drop some validators? or make a compressed string?
 
 const minipoolsInTable = () => Array.from(
   minipoolsList.querySelectorAll('td.minipool > a')
@@ -458,11 +454,6 @@ rangeButtons.append(
   lastHourButton
 )
 
-// TODO: server sends "update minimum/maximum slot" messages whenever finalized increases?
-
-// TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.
-// TODO: add tooltips to add/sub buttons
-
 const fromButtons = document.createElement('div')
 const toButtons = document.createElement('div')
 fromButtons.classList.add('dirRangeButtons')
@@ -499,6 +490,8 @@ for (const {name, slots} of timeIncrements) {
     subButton.type = 'button'
     addButton.value = `+${name[0]}`
     subButton.value = `-${name[0]}`
+    addButton.title = `Increase range by one ${name}`
+    subButton.title = `Decrease range by one ${name}`
     function makeHandler(op) {
       return () => {
         const currentValue = parseInt(target.value)
@@ -515,7 +508,6 @@ for (const {name, slots} of timeIncrements) {
   fromButtons.append(...makeAddSub(fromSlot))
   toButtons.append(...makeAddSub(toSlot))
 }
-// TODO: disable buttons when they won't work?
 
 const fromDateTime = document.createElement('div')
 const toDateTime = document.createElement('div')
@@ -595,8 +587,6 @@ const summaryDutyEntries = Array.from(
 })
 summaryTable.appendChild(document.createElement('tr')).append(...summaryDutyEntries)
 
-// TODO: add attestation accuracy and reward info
-
 const detailsDiv = document.createElement('div')
 detailsDiv.id = 'details'
 
@@ -610,8 +600,6 @@ const emptyDay = () => ({
   syncs: {...emptyDutyData}
 })
 const addTotal = (t, d) => Object.keys(t).forEach(k => t[k] += d[k])
-
-// TODO: make weekday start configurable (Sun vs Mon)
 
 socket.on('perfDetails', data => {
   // <data> = { <year>: {<month>: {<day>: {attestations: <dutyData>, proposals: <dutyData>, syncs: <dutyData>, slots: {min: <num>, max: <num>}}, ...}, ...}, ...}
@@ -853,11 +841,18 @@ window.addEventListener('popstate', setParamsFromUrl, {passive: true})
 setParamsFromUrl()
 
 // TODO: fix slot selection from URL on initial load
-// TODO: fix ascending/descending icons for sort buttons
+// TODO: handle URL length limits - just drop some validators? or make a more compressed string?
 // TODO: add loading (and out-of-date) indication for results/details
-// TODO: list proposal slots in day title (and/or somewhere else)
+// TODO: improve performance for loading results (caching? do more on client? parallelise fetching per day/month?, caching client-side)
+// TODO: add attestation accuracy and reward info
+// TODO: disable add/sub buttons when they won't work?
+// TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?
+// TODO: server sends "update minimum/maximum slot" messages whenever finalized increases?
 // TODO: add NO portion of rewards separately from validator rewards? (need to track commission and borrow)
 // TODO: add copy for whole table?
 // TODO: make certain css colors (and maybe other styles) editable?
+// TODO: make weekday start configurable (Sun vs Mon)?
 // TODO: add selector for subperiod sizes (instead of year/month/day)?
 // TODO: look into execution layer rewards too? probably ask for more money to implement that
+// TODO: add free-form text selectors for times too?
+// const timezoneLabel = document.createElement('label') TODO: add timezone selection?

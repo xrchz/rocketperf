@@ -2,9 +2,85 @@ const socket = io()
 const frag = document.createDocumentFragment()
 const body = document.querySelector('body')
 
-const compressIndices = (a) => a.map(i => parseInt(i).toString(36)).join('-')
+const stringCollator = new Intl.Collator()
+const numericCollator = new Intl.Collator(undefined, {numeric: true})
+
+const SOS = '!'
+const naiveBWT = (s) => {
+  const ps = SOS.concat(s)
+  return Array.from(
+    Array(ps.length).keys()
+  ).map(i =>
+    ps.slice(i).concat(ps.slice(0, i))
+  ).toSorted(stringCollator.compare).map(r =>
+    r.at(-1)
+  ).join('')
+}
+const invertNaiveBWT = (s) => {
+  const cs = s.split('')
+  const a = cs.map(c => '')
+  for (const u of Array(s.length)) {
+    cs.forEach((c, i) => a[i] = c.concat(a[i]))
+    a.sort(stringCollator.compare)
+  }
+  return a.find(s => s.startsWith(SOS)).slice(1)
+}
+const charCode0 = '0'.charCodeAt(0)
+const charCode9 = '9'.charCodeAt(0)
+const charCodeA = 'A'.charCodeAt(0)
+const charCodeZ = 'Z'.charCodeAt(0)
+const charCodea = 'a'.charCodeAt(0)
+const toUpperChar = (c) => {
+  const n = c.charCodeAt(0)
+  return String.fromCharCode(
+    n <= charCode9 ?
+    n - charCode0 + charCodeA :
+    n - charCodea + charCodeA + 10
+  )
+}
+const fromUpperCharCode = (c) => {
+  const n = c - charCodeA
+  return String.fromCharCode(
+    n + (n < 10 ? charCode0 : charCodea - 10)
+  )
+}
+const naiveRLE = (s) => {
+  const a = []
+  const cs = s.split('')
+  while (cs.length) {
+    let n = 0
+    let c = cs.shift()
+    while (cs[0] === c) cs.shift(n++)
+    a.push(c)
+    if (n) a.push(...n.toString(26).split('').map(toUpperChar))
+  }
+  return a.join('')
+}
+const invertNaiveRLE = (s) => {
+  const a = []
+  let i = 0
+  while (i < s.length) {
+    a.push(s.at(i++))
+    const ns = []
+    while (charCodeA <= s.charCodeAt(i) && s.charCodeAt(i) <= charCodeZ)
+      ns.push(s.charCodeAt(i++))
+    if (ns.length)
+      a.push(
+        ...Array(
+          parseInt(ns.map(fromUpperCharCode).join(''), 26)
+        ).fill(a.at(-1))
+      )
+  }
+  return a.join('')
+}
+
+const compressIndices = (a) => naiveRLE(
+  naiveBWT(
+    a.map(i => parseInt(i).toString(36)).join('-')
+  )
+)
 const decompressIndices = (s) => s ?
-  s.split('-').map(x => parseInt(x, 36))
+  invertNaiveBWT(invertNaiveRLE(s)).split('-').map(x => parseInt(x, 36))
   : []
 
 const idReplacements = new Map([['%', 'P'], ['(', 'L'], [')', 'R']])
@@ -75,8 +151,6 @@ minipoolsList.appendChild(document.createElement('tr'))
     })
   )
 
-const stringCollator = new Intl.Collator()
-const numericCollator = new Intl.Collator(undefined, {numeric: true})
 const sortUp = collator => (a, b) => collator.compare(a.dataset.sortKey, b.dataset.sortKey)
 const sortDown = collator => (a, b) => collator.compare(b.dataset.sortKey, a.dataset.sortKey)
 function sortByColumn(compareFn, headerId) {
@@ -854,13 +928,14 @@ setParamsFromUrl()
 
 // TODO: add loading (and out-of-date) indication for results/details
 // TODO: improve performance for loading results (caching? do more on client? parallelise fetching per day/month?, caching client-side)
-// TODO: handle URL length limits - just drop some validators? or make a more compressed string?
 // TODO: add attestation accuracy and reward info
 // TODO: disable add/sub buttons when they won't work?
 // TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?
 // TODO: server sends "update minimum/maximum slot" messages whenever finalized increases?
 // TODO: add NO portion of rewards separately from validator rewards? (need to track commission and borrow)
+// TODO: check (and handle) URL length limit?
 // TODO: add copy for whole table?
+// TODO: speed up compression/decompression of indices?
 // TODO: make certain css colors (and maybe other styles) editable?
 // TODO: make weekday start configurable (Sun vs Mon)?
 // TODO: add selector for subperiod sizes (instead of year/month/day)?

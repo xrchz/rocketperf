@@ -539,7 +539,6 @@ const summaryFromDuty = (h, d) => {
 }
 const allSummaryTable = document.createElement('table')
 allSummaryTable.id = 'allSummaryTable'
-allSummaryTable.classList.add('hidden')
 const dutyHeadings = ['Attestations', 'Proposals', 'Syncs']
 allSummaryTable.appendChild(document.createElement('tr'))
   .append(...summaryHeadings.map(h => {
@@ -559,7 +558,6 @@ allSummaryTable.appendChild(document.createElement('tr'))
 
 const summaryTable = document.createElement('table')
 summaryTable.id = 'summaryTable'
-summaryTable.classList.add('hidden')
 summaryTable.appendChild(document.createElement('tr'))
   .append(...dutyHeadings.map(h => {
     const th = document.createElement('th')
@@ -592,6 +590,16 @@ const summaryDutyEntries = Array.from(
   return td
 })
 summaryTable.appendChild(document.createElement('tr')).append(...summaryDutyEntries)
+
+const summaryDiv = document.createElement('div')
+summaryDiv.classList.add('hidden')
+const summaryInfo = document.createElement('p')
+summaryInfo.innerText = "Consensus layer rewards only, including rETH holders' portion."
+summaryDiv.append(
+  summaryInfo,
+  allSummaryTable,
+  summaryTable
+)
 
 const detailsDiv = document.createElement('div')
 detailsDiv.id = 'details'
@@ -684,14 +692,7 @@ socket.on('perfDetails', data => {
       td.innerText = summaryFromDuty(h, duty)
     }
   }
-  if (allSummaryTotals.duties) {
-    allSummaryTable.classList.remove('hidden')
-    summaryTable.classList.remove('hidden')
-  }
-  else {
-    allSummaryTable.classList.add('hidden')
-    summaryTable.classList.add('hidden')
-  }
+  summaryDiv.classList[allSummaryTotals.duties ? 'remove' : 'add']('hidden')
 })
 
 socket.on('minipools', async minipools => {
@@ -806,8 +807,7 @@ body.append(
   slotRangeLimitsDiv,
   slotSelectionDiv,
   summaryHeading,
-  allSummaryTable,
-  summaryTable,
+  summaryDiv,
   detailsHeading,
   detailsDiv,
   footerDiv

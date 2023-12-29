@@ -299,12 +299,13 @@ const setTimeFromSlot = ({slot, dateInput, timeInput}) =>
     )
   )
 
-let callAfterValidatorsForSlots
+const waitingForMinipools = []
+const waitingForSlotRangeLimits = []
 
 async function updateSlotRange() {
 
-  if (typeof callAfterValidatorsForSlots == 'function') {
-    console.log(`Skipping updateSlotRange for callAfterValidatorsForSlots`)
+  if (waitingForMinipools.length) {
+    console.log(`Skipping updateSlotRange because there are updates waiting for validator changes`)
     return
   }
 
@@ -375,6 +376,7 @@ const timeSelectionHandler = (e) => {
   const time = (new Date(datestring)).getTime() / 1000
   const slotInput = slotSelectionDiv.querySelector(`input[type="number"][data-dir="${dir}"]`)
   socket.emit('timeToSlot', time, (slot) => {
+    slotInput.dataset.prevValue = slotInput.value
     slotInput.value = slot
     updateSlotRange()
   })
@@ -688,7 +690,7 @@ socket.on('perfDetails', data => {
   }
 })
 
-socket.on('minipools', minipools => {
+socket.on('minipools', async minipools => {
   console.log(`Received ${minipools.length} minipools`)
   for (const {minipoolAddress, minipoolEnsName,
               nodeAddress, nodeEnsName,
@@ -746,10 +748,11 @@ socket.on('minipools', minipools => {
     socket.volatile.emit('slotRangeLimits',
       minipools.map(({validatorIndex}) => validatorIndex)
     )
+    await new Promise(resolve => waitingForSlotRangeLimits.push(resolve))
   }
   else minipoolsList.classList.add('hidden')
-  if (typeof callAfterValidatorsForSlots == 'function')
-    callAfterValidatorsForSlots()
+  while (waitingForMinipools.length)
+    waitingForMinipools.shift()()
 })
 
 socket.on('slotRangeLimits', ({min, max}) => {
@@ -762,7 +765,11 @@ socket.on('slotRangeLimits', ({min, max}) => {
      {slot: max, dateInput: limitToDate, timeInput: limitToTime}].map(
        setTimeFromSlot
      )
-  ).then(updateSlotRange)
+  ).then(() => {
+    while (waitingForSlotRangeLimits.length)
+      waitingForSlotRangeLimits.shift()()
+    return updateSlotRange()
+  })
 })
 
 socket.on('unknownEntities', entities => {
@@ -818,12 +825,12 @@ async function setParamsFromUrl() {
 
   const urlValidators = thisUrl.searchParams.getAll('v')
   if (urlValidators.length) {
-    promise = new Promise(resolve => callAfterValidatorsForSlots = resolve)
+    promise = new Promise(resolve => waitingForMinipools.push(resolve))
     entityEntryBox.value = urlValidators.join('\n')
     entityEntryBox.dispatchEvent(new Event('change'))
   }
 
-  await promise.then(() => callAfterValidatorsForSlots = undefined)
+  await promise
 
   promise = false
   slotsToSet.forEach(({input, slot}) => {
@@ -840,10 +847,9 @@ window.addEventListener('popstate', setParamsFromUrl, {passive: true})
 
 setParamsFromUrl()
 
-// TODO: fix slot selection from URL on initial load
-// TODO: handle URL length limits - just drop some validators? or make a more compressed string?
 // TODO: add loading (and out-of-date) indication for results/details
 // TODO: improve performance for loading results (caching? do more on client? parallelise fetching per day/month?, caching client-side)
+// TODO: handle URL length limits - just drop some validators? or make a more compressed string?
 // TODO: add attestation accuracy and reward info
 // TODO: disable add/sub buttons when they won't work?
 // TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?
@@ -855,4 +861,4 @@ setParamsFromUrl()
 // TODO: add selector for subperiod sizes (instead of year/month/day)?
 // TODO: look into execution layer rewards too? probably ask for more money to implement that
 // TODO: add free-form text selectors for times too?
-// const timezoneLabel = document.createElement('label') TODO: add timezone selection?
+// TODO: add timezone selection?

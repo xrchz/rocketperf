@@ -592,6 +592,7 @@ const summaryDutyEntries = Array.from(
 summaryTable.appendChild(document.createElement('tr')).append(...summaryDutyEntries)
 
 const summaryDiv = document.createElement('div')
+summaryDiv.id = 'summary'
 summaryDiv.classList.add('hidden')
 const summaryInfo = document.createElement('p')
 summaryInfo.innerText = "Consensus layer rewards only, including rETH holders' portion."

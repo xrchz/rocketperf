@@ -19,6 +19,11 @@ td.withdrawal { /* todo: ens vs address */
 td.selected {
   text-align: center;
 }
+div#summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
 div#slotSelection, div#slotRangeLimits {
   display: grid;
   grid-template-columns: 1fr 1fr;

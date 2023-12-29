@@ -114,6 +114,11 @@ async function processEpoch(epoch, validatorIds) {
 
   log(`Getting attestations and syncs for ${epoch}`)
 
+  validatorIds.forEach(validatorIndex => {
+    if (!(epoch <= db.get(`${chainId}/validator/${validatorIndex}/dutiesEpoch`)))
+      throw new Error(`dutiesEpoch for ${validatorIndex} too low for ${epoch}`)
+  })
+
   let searchSlot = firstSlotInEpoch
   while (searchSlot < firstSlotInEpoch + slotsPerEpoch) {
     const blockUrl = new URL(

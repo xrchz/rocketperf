@@ -5,7 +5,7 @@ const body = document.querySelector('body')
 const stringCollator = new Intl.Collator()
 const numericCollator = new Intl.Collator(undefined, {numeric: true})
 
-const SOS = '!'
+const SOS = '_'
 const naiveBWT = (s) => {
   const ps = SOS.concat(s)
   return Array.from(

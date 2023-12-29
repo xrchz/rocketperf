@@ -451,7 +451,7 @@ const timeSelectionHandler = (e) => {
   const value = e.target.value
   const other = slotSelectionDiv.querySelector(`input[type="${otherType}"][data-dir="${dir}"]`)
   const datestring = type === 'time' ? `${other}T${value}` : `${value}T${other}`
-  const time = (new Date(datestring)).getTime() / 1000
+  const time = new Date(datestring).getTime() / 1000
   const slotInput = slotSelectionDiv.querySelector(`input[type="number"][data-dir="${dir}"]`)
   socket.emit('timeToSlot', time, (slot) => {
     slotInput.dataset.prevValue = slotInput.value
@@ -711,8 +711,9 @@ socket.on('perfDetails', data => {
       monthDiv.classList.add('month')
       const monthObj = yearObj[month]
       const days = Object.keys(monthObj).map(k => parseInt(k)).toSorted(compareNumbers)
-      const spacerDays = ((new Date(`${year}-${month + 1}-${days[0]}`)).getUTCDay() + 6) % 7
-      for (const spacerDay of Array(spacerDays).fill()) {
+      const spacerDays = days[0] - 1
+      const monthSpacerDays = new Date(`${year}-${month + 1}-1`).getUTCDay()
+      for (const spacerDay of Array(monthSpacerDays + spacerDays).fill()) {
         const dayDiv = monthDiv.appendChild(document.createElement('div'))
         dayDiv.classList.add('day')
         dayDiv.classList.add('spacer')
@@ -928,6 +929,7 @@ setParamsFromUrl()
 
 // TODO: add loading (and out-of-date) indication for results/details
 // TODO: improve performance for loading results (caching? do more on client? parallelise fetching per day/month?, caching client-side)
+// TODO: add range slider input for slot selection
 // TODO: add attestation accuracy and reward info
 // TODO: disable add/sub buttons when they won't work?
 // TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?

@@ -35,6 +35,8 @@ const rewardsOptionsForEpoch = (validatorIds) => ({
   body: JSON.stringify(Array.from(validatorIds.keys()))
 })
 
+let running = true
+
 async function getAttestationDuties(epoch, validatorIds) {
   log(`Getting attestation duties for ${epoch}`)
 
@@ -84,6 +86,7 @@ async function processEpoch(epoch, validatorIds) {
 
   const firstSlotInEpoch = epoch * slotsPerEpoch
 
+  if (!running) return
   log(`Getting sync duties for ${epoch}`)
 
   const syncDutiesUrl = new URL(
@@ -112,6 +115,7 @@ async function processEpoch(epoch, validatorIds) {
     }
   }
 
+  if (!running) return
   log(`Getting attestations and syncs for ${epoch}`)
 
   validatorIds.forEach(validatorIndex => {
@@ -120,7 +124,7 @@ async function processEpoch(epoch, validatorIds) {
   })
 
   let searchSlot = firstSlotInEpoch
-  while (searchSlot < firstSlotInEpoch + slotsPerEpoch) {
+  while (running && searchSlot < firstSlotInEpoch + slotsPerEpoch) {
     const blockUrl = new URL(
       `/eth/v1/beacon/blinded_blocks/${searchSlot}`,
       beaconRpcUrl
@@ -191,6 +195,7 @@ async function processEpoch(epoch, validatorIds) {
     searchSlot++
   }
 
+  if (!running) return
   log(`Getting attestation rewards for ${epoch}`)
 
   const attestationRewardsUrl = new URL(
@@ -204,6 +209,7 @@ async function processEpoch(epoch, validatorIds) {
     return json.data
   })
   for (const {validator_index, head, target, source, inactivity} of attestationRewards.total_rewards) {
+    if (!running) break
     const attestationKey = `${chainId}/validator/${validator_index}/attestation/${epoch}`
     const attestation = db.get(attestationKey)
     if (attestation && !('reward' in attestation && 'ideal' in attestation)) {
@@ -228,6 +234,7 @@ async function processEpoch(epoch, validatorIds) {
     }
   }
 
+  if (!running) return
   log(`Getting proposals for ${epoch}`)
 
   const proposalUrl = new URL(
@@ -241,6 +248,7 @@ async function processEpoch(epoch, validatorIds) {
     return json.data
   })
   for (const {validator_index, slot} of proposals) {
+    if (!running) break
     if (validatorIds.has(validator_index)) {
       const proposalKey = `${chainId}/validator/${validator_index}/proposal/${slot}`
       const proposal = db.get(proposalKey) || {}
@@ -264,7 +272,11 @@ async function processEpoch(epoch, validatorIds) {
   }
 }
 
-parentPort.on('message', async ({epoch, validatorIds, dutiesOnly}) => {
+parentPort.on('message', async ({epoch, validatorIds, dutiesOnly, interrupt}) => {
+  if (interrupt) {
+    running = false
+    return
+  }
   const fn = dutiesOnly ? getAttestationDuties : processEpoch
   await fn(epoch, validatorIds)
   parentPort.postMessage('done')

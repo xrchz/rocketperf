@@ -129,3 +129,8 @@ export const updateMinipoolCount = async () => {
 }
 export const getMinipoolByPubkey = pubkey =>
   minipoolsByPubkey.get(pubkey) ?? nullAddress
+
+export const epochFromActivationInfo = activationInfo =>
+  activationInfo.promoted ?
+    epochOfSlot(activationInfo.promoted) :
+    activationInfo.beacon

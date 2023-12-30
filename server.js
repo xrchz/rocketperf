@@ -9,7 +9,7 @@ import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { db, log, provider, chainId, beaconRpcUrl, nullAddress, slotsPerEpoch,
          multicall, getIndexFromPubkey, getPubkeyFromIndex, getMinipoolByPubkey,
-         getRocketAddress, rocketMinipoolManager, minipoolAbi,
+         getRocketAddress, rocketMinipoolManager, minipoolAbi, epochFromActivationInfo,
          timeSlotConvs, getFinalizedSlot, epochOfSlot, secondsPerSlot }
        from './lib.js'
 
@@ -280,15 +280,20 @@ io.on('connection', socket => {
     for (const minipoolAddress of minipoolAddresses) {
       const pubkey = await rocketMinipoolManager.getMinipoolPubkey(minipoolAddress)
       const validatorIndex = await getIndexFromPubkey(pubkey)
+      const activationEpoch = epochFromActivationInfo(db.get(`${chainId}/validator/${validatorIndex}/activationInfo`))
       const nextEpoch = db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`)
       if (typeof(nextEpoch) != 'number' || nextEpoch < epochOfSlot(toSlot)) {
-        console.warn(`Failed to include perfDetails for ${minipoolAddress}: epoch ${nextEpoch} no good for ${fromSlot}-${toSlot}`)
+        console.warn(`Failed to include perfDetails for ${minipoolAddress}: nextEpoch ${nextEpoch} before ${fromSlot}-${toSlot}`)
         continue
       }
-      // TODO: skip slots that are before this validator became active in rocket pool
+      if (typeof(activationEpoch) != 'number' || epochOfSlot(toSlot) < activationEpoch) {
+        log(`Skipping perfDetails for ${minipoolAddress}: activationEpoch ${activationEpoch} after ${fromSlot}-${toSlot}`)
+        continue
+      }
       for (const [slotOffset, result] of resultsBySlot.entries()) {
         const slot = fromSlot + slotOffset
         const epoch = epochOfSlot(slot)
+        if (epoch < activationEpoch) continue
         const attestation = db.get(`${chainId}/validator/${validatorIndex}/attestation/${epoch}`)
         if (attestation?.slot === slot) {
           const attestations = result.attestations || {...emptyDutyData()}

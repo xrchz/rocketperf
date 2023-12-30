@@ -5,7 +5,7 @@ import { db, provider, chainId, beaconRpcUrl, log, multicall, secondsPerSlot,
          minipoolsByPubkeyCount, minipoolsByPubkey, minipoolCount,
          updateMinipoolCount, incrementMinipoolsByPubkeyCount, getIndexFromPubkey,
          getMinipoolByPubkey, getFinalizedSlot, getPubkeyFromIndex,
-         rocketMinipoolManager, FAR_FUTURE_EPOCH
+         rocketMinipoolManager, FAR_FUTURE_EPOCH, epochFromActivationInfo
        } from './lib.js'
 import { Worker } from 'node:worker_threads'
 const {timeToSlot, slotToTime} = timeSlotConvs(chainId)
@@ -174,11 +174,6 @@ async function getActivationInfo(validatorIndex) {
   if (changed) await db.put(key, activationInfo)
   return activationInfo
 }
-
-const epochFromActivationInfo = activationInfo =>
-  activationInfo.promoted ?
-    epochOfSlot(activationInfo.promoted) :
-    activationInfo.beacon
 
 const validatorStartEpochs = new Map()
 

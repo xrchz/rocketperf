@@ -213,7 +213,10 @@ entityEntryBox.rows = 6
 entityEntryBox.autocomplete = 'on'
 
 entityEntryBox.addEventListener('change',
-  () => socket.emit('entities', entityEntryBox.value),
+  () => {
+    selectedHeading.innerText = 'Loading Selected Validators...'
+    socket.emit('entities', entityEntryBox.value)
+  },
   {passive: true}
 )
 
@@ -297,6 +300,7 @@ minipoolsList.appendChild(document.createElement('tr'))
           Array.from(
             minipoolsList.querySelectorAll('input[type="checkbox"]')
           ).forEach(e => e.checked = ch.checked)
+          changeSelectedBoxes()
         })
         th.append(...buttons.toSpliced(-1, 1, ch))
       }
@@ -520,13 +524,19 @@ async function updateSlotRange() {
     }
     if (slotRangeLimits.validatorsChanged) {
       const indices = validatorIndicesInTable()
-      if (indices.length <= MAX_QUERY_INDICES) {
-        thisUrl.searchParams.delete('i')
-        thisUrl.searchParams.set('v', indices.join('-'))
+      if (indices.length) {
+        if (indices.length <= MAX_QUERY_INDICES) {
+          thisUrl.searchParams.delete('i')
+          thisUrl.searchParams.set('v', indices.join('-'))
+        }
+        else {
+          thisUrl.searchParams.delete('v')
+          thisUrl.searchParams.set('i', compressIndices(indices))
+        }
       }
       else {
         thisUrl.searchParams.delete('v')
-        thisUrl.searchParams.set('i', compressIndices(indices))
+        thisUrl.searchParams.delete('i')
       }
     }
     window.history.pushState(null, '', thisUrl)
@@ -865,6 +875,12 @@ socket.on('perfDetails', data => {
   summaryDiv.classList[allSummaryTotals.duties ? 'remove' : 'add']('hidden')
 })
 
+const changeSelectedBoxes = () => {
+  const indices = validatorIndicesInTable()
+  slotRangeLimits.validatorsChanged = indices.length + 1
+  socket.volatile.emit('slotRangeLimits', indices)
+}
+
 socket.on('minipools', async minipools => {
   console.log(`Received ${minipools.length} minipools`)
   for (const {minipoolAddress, minipoolEnsName,
@@ -888,13 +904,7 @@ socket.on('minipools', async minipools => {
     sel.type = 'checkbox'
     sel.checked = true
     sel.addEventListener('change', updateIncludeAllChecked, {passive: true})
-    sel.addEventListener('change',
-      () => {
-        slotRangeLimits.validatorsChanged = true
-        socket.volatile.emit('slotRangeLimits', validatorIndicesInTable())
-      },
-      {passive: true}
-    )
+    sel.addEventListener('change', changeSelectedBoxes, {passive: true})
     tr.append(
       ...[mpA, nodeA, wA, valA, sel].map((a, i) => {
         const td = document.createElement('td')
@@ -919,18 +929,33 @@ socket.on('minipools', async minipools => {
   updateIncludeAllChecked()
   if (minipools.length) {
     minipoolsList.classList.remove('hidden')
-    slotRangeLimits.validatorsChanged = true
+    slotRangeLimits.validatorsChanged = minipools.length + 1
     socket.volatile.emit('slotRangeLimits',
       minipools.map(({validatorIndex}) => validatorIndex)
     )
     await new Promise(resolve => waitingForSlotRangeLimits.push(resolve))
   }
-  else minipoolsList.classList.add('hidden')
+  else {
+    updateSelectedHeading()
+    minipoolsList.classList.add('hidden')
+  }
   while (waitingForMinipools.length)
     waitingForMinipools.shift()()
 })
 
+
+function updateSelectedHeading(n1) {
+  const n = n1 - 1
+  if (n) {
+    const s = n > 1 ? 's' : ''
+    selectedHeading.innerText = `${n} Selected Validator${s}`
+  }
+  else
+    selectedHeading.innerText = 'Selected Validators'
+}
+
 socket.on('slotRangeLimits', ({min, max}) => {
+  updateSelectedHeading(slotRangeLimits.validatorsChanged)
   slotRangeLimits.min = min
   slotRangeLimits.max = max
   limitFromSlot.value = min
@@ -1022,12 +1047,13 @@ window.addEventListener('popstate', setParamsFromUrl, {passive: true})
 
 setParamsFromUrl()
 
-// TODO: put validator count in section heading
-// TODO: add loading (and out-of-date) indication for results/details
 // TODO: improve performance for loading results (caching? do more on client? parallelise fetching per day/month?, caching client-side)
+// TODO: add loading (and out-of-date) indication for results/details
+// TODO: add volatility delay before responding to user input changes to selected minipools or slots
 // TODO: add range slider input for slot selection
 // TODO: add attestation accuracy and reward info
 // TODO: disable add/sub buttons when they won't work?
+// TODO: use ' ' ('+') as separator instead of '-' in v?
 // TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?
 // TODO: server sends "update minimum/maximum slot" messages whenever finalized increases?
 // TODO: add NO portion of rewards separately from validator rewards? (need to track commission and borrow)

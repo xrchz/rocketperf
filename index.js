@@ -108,55 +108,6 @@ const invertNaiveBPE = (s) => {
   return r.join('')
 }
 
-const charCode0 = '0'.charCodeAt(0)
-const charCode9 = '9'.charCodeAt(0)
-const charCodeA = 'A'.charCodeAt(0)
-const charCodeZ = 'Z'.charCodeAt(0)
-const charCodea = 'a'.charCodeAt(0)
-const toUpperChar = (c) => {
-  const n = c.charCodeAt(0)
-  return String.fromCharCode(
-    n <= charCode9 ?
-    n - charCode0 + charCodeA :
-    n - charCodea + charCodeA + 10
-  )
-}
-const fromUpperCharCode = (c) => {
-  const n = c - charCodeA
-  return String.fromCharCode(
-    n + (n < 10 ? charCode0 : charCodea - 10)
-  )
-}
-const naiveRLE = (s) => {
-  const a = []
-  const cs = s.split('')
-  while (cs.length) {
-    let n = 0
-    let c = cs.shift()
-    while (cs[0] === c) cs.shift(n++)
-    a.push(c)
-    if (n) a.push(...n.toString(26).split('').map(toUpperChar))
-  }
-  return a.join('')
-}
-const invertNaiveRLE = (s) => {
-  const a = []
-  let i = 0
-  while (i < s.length) {
-    a.push(s.at(i++))
-    const ns = []
-    while (charCodeA <= s.charCodeAt(i) && s.charCodeAt(i) <= charCodeZ)
-      ns.push(s.charCodeAt(i++))
-    if (ns.length)
-      a.push(
-        ...Array(
-          parseInt(ns.map(fromUpperCharCode).join(''), 26)
-        ).fill(a.at(-1))
-      )
-  }
-  return a.join('')
-}
-
 const joinBase36 = a => a.map(i => parseInt(i).toString(36)).join('-')
 
 const compressIndices = (a) => naiveBPE(

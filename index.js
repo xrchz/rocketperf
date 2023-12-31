@@ -25,6 +25,89 @@ const invertNaiveBWT = (s) => {
   }
   return a.find(s => s.startsWith(SOS)).slice(1)
 }
+
+const lowerAlpha = Array(26).fill().map((u,i) => (i+10).toString(36))
+const upperAlpha = lowerAlpha.map(c => c.toUpperCase())
+const digits = Array(10).fill().map((u,i) => i.toString())
+
+const encodableChars = digits.concat(lowerAlpha).concat(['-',SOS])
+
+const naiveMTF = (s) => {
+  const dict = encodableChars.slice()
+  const a = []
+  for (const c of s.split('')) {
+    const i = dict.indexOf(c)
+    a.push(i)
+    dict.unshift(...dict.splice(i, 1))
+  }
+  return a
+}
+const invertNaiveMTF = (a) => {
+  const dict = encodableChars.slice()
+  const s = []
+  for (const i of a) {
+    s.push(dict[i])
+    dict.unshift(...dict.splice(i, 1))
+  }
+  return s.join('')
+}
+
+// https://url.spec.whatwg.org/#application-x-www-form-urlencoded-percent-encode-set
+// allowed characters = lowerAlpha + upperAlpha + digits + ['-', '.', '_', '*', ' ']
+const replacementChars = upperAlpha.concat(['.','*',' ']) // without encodableChars
+const naiveBPE = (s) => {
+  const availableReplacements = replacementChars.slice()
+  let r = s
+  let d = []
+  while (r.length >= 4 && availableReplacements.length) {
+    const counts = new Map()
+    for (const i of Array(r.length - 1).keys()) {
+      const key = `${r.at(i)}${r.at(i+1)}`
+      counts.set(key, counts.get(key) + 1 || 1)
+    }
+    const [bp, c] = Array.from(counts.entries()).toSorted(([k1,v1],[k2,v2]) => v2 - v1).at(0)
+    if (!(c > 1)) break
+    const k = availableReplacements.pop()
+    d.push(`${k}${bp}`)
+    const t = []
+    let i = 0
+    while (i < r.length) {
+      if (`${r.at(i)}${r.at(i+1)}` === bp) {
+        t.push(k)
+        i += 2
+      }
+      else {
+        t.push(r.at(i))
+        i += 1
+      }
+    }
+    r = t.join('')
+  }
+  if (!d.length || 3 * d.length + r.length >= s.length) return s
+  return `${d.join('')}${r}`
+}
+const invertNaiveBPE = (s) => {
+  const d = new Map()
+  const cs = s.split('')
+  const r = []
+  let f = true
+  while (cs.length) {
+    const k = cs.shift()
+    const bp = d.get(k)
+    if (bp) {
+      cs.splice(0, 0, ...bp)
+      f = false
+    }
+    else if (f && replacementChars.includes(k))
+      d.set(k, `${cs.shift()}${cs.shift()}`)
+    else {
+      r.push(k)
+      f = false
+    }
+  }
+  return r.join('')
+}
+
 const charCode0 = '0'.charCodeAt(0)
 const charCode9 = '9'.charCodeAt(0)
 const charCodeA = 'A'.charCodeAt(0)
@@ -74,13 +157,16 @@ const invertNaiveRLE = (s) => {
   return a.join('')
 }
 
-const compressIndices = (a) => naiveRLE(
-  naiveBWT(
-    a.map(i => parseInt(i).toString(36)).join('-')
-  )
+const joinBase36 = a => a.map(i => parseInt(i).toString(36)).join('-')
+
+const compressIndices = (a) => naiveBPE(
+  naiveMTF(naiveBWT(joinBase36(a)))
+  .map(i => encodableChars.at(i)).join('')
 )
 const decompressIndices = (s) => s ?
-  invertNaiveBWT(invertNaiveRLE(s)).split('-').map(x => parseInt(x, 36))
+  invertNaiveBWT(invertNaiveMTF(invertNaiveBPE(s).split('')
+    .map(c => encodableChars.indexOf(c))))
+  .split('-').map(x => parseInt(x, 36))
   : []
 
 const idReplacements = new Map([['%', 'P'], ['(', 'L'], [')', 'R']])
@@ -378,6 +464,8 @@ const setTimeFromSlot = ({slot, dateInput, timeInput}) =>
     )
   )
 
+const MAX_QUERY_INDICES = 64
+
 const waitingForMinipools = []
 const waitingForSlotRangeLimits = []
 
@@ -431,9 +519,15 @@ async function updateSlotRange() {
       thisUrl.searchParams.set('t', toNew)
     }
     if (slotRangeLimits.validatorsChanged) {
-      thisUrl.searchParams.set('v',
-        compressIndices(validatorIndicesInTable())
-      )
+      const indices = validatorIndicesInTable()
+      if (indices.length <= MAX_QUERY_INDICES) {
+        thisUrl.searchParams.delete('i')
+        thisUrl.searchParams.set('v', indices.join('-'))
+      }
+      else {
+        thisUrl.searchParams.delete('v')
+        thisUrl.searchParams.set('i', compressIndices(indices))
+      }
     }
     window.history.pushState(null, '', thisUrl)
     updatePerformanceDetails()
@@ -903,7 +997,8 @@ async function setParamsFromUrl() {
 
   let promise
 
-  const urlValidators = decompressIndices(thisUrl.searchParams.get('v'))
+  const urlValidators = thisUrl.searchParams.get('v')?.split('-') ||
+    decompressIndices(thisUrl.searchParams.get('i'))
   if (urlValidators.length) {
     promise = new Promise(resolve => waitingForMinipools.push(resolve))
     entityEntryBox.value = urlValidators.join('\n')
@@ -927,6 +1022,7 @@ window.addEventListener('popstate', setParamsFromUrl, {passive: true})
 
 setParamsFromUrl()
 
+// TODO: put validator count in section heading
 // TODO: add loading (and out-of-date) indication for results/details
 // TODO: improve performance for loading results (caching? do more on client? parallelise fetching per day/month?, caching client-side)
 // TODO: add range slider input for slot selection
@@ -935,7 +1031,8 @@ setParamsFromUrl()
 // TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?
 // TODO: server sends "update minimum/maximum slot" messages whenever finalized increases?
 // TODO: add NO portion of rewards separately from validator rewards? (need to track commission and borrow)
-// TODO: check (and handle) URL length limit?
+// TODO: check (and handle) URL length limit? e.g. store on server for socketid (with ttl)
+// TODO: put selected minipools within its own scroll area (to limit vertical space usage)
 // TODO: add copy for whole table?
 // TODO: speed up compression/decompression of indices?
 // TODO: make certain css colors (and maybe other styles) editable?

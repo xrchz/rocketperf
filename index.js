@@ -414,10 +414,52 @@ const validatorIndicesInTable = () => Array.from(
   minipoolsList.querySelectorAll('td.validator > a')
 ).flatMap(a => isIncluded(a) ? [a.innerText] : [])
 
-// map of maps: compressed-(sorted-indices)-string -> slot-range-string -> day object
-const minipoolsPerformanceCache = new Map()
-// map of maps: validatorIndex-string -> slot-range-string -> day object
-const minipoolPerformanceCache = new Map()
+// main object store ('')
+// out-of-line array-type keys: [[validatorIndex, ...] (sorted, non-empty), [minSlot, maxSlot]]
+// values: day objects
+// lru object store ('lru')
+// keyPath 'key', with values the same as the above keys
+// additional property 'time': the time of last access of the above key
+const cacheDBPromise = new Promise((resolve, reject) => {
+  const req = window.indexedDB.open('cache')
+  req.addEventListener('success', () => resolve(req.result), {passive: true})
+  req.addEventListener('error', () => reject(req.error), {passive: true})
+  req.addEventListener('upgradeneeded', () => {
+    const db = req.result
+    db.createObjectStore('')
+    db.createObjectStore('lru', {keyPath: 'key'}).createIndex('', 'time')
+  }, {passive: true})
+})
+
+const EVICTION_THRESHOLD = 0.8
+
+async function cacheRetrieve(indices, minSlot, maxSlot, missHandler) {
+  const db = await cacheDBPromise
+  const tx = db.transaction('', 'readonly', {durability: 'relaxed'})
+  const os = tx.objectStore('')
+  const key = [indices, [minSlot, maxSlot]]
+  const req = os.get(key)
+  const v = await new Promise(resolve =>
+    req.addEventListener('success', () => resolve(req.result), {passive: true})
+  )
+  db.transaction('lru', 'readwrite').objectStore('lru').put(
+    {key, time: Math.round(new Date().getTime() / 1000)}
+  )
+  if (v) return v
+  const computed = await missHandler()
+  await new Promise(resolve =>
+    db.transaction('', 'readwrite').objectStore('').add(computed, key)
+    .addEventListener('success', resolve, {passive: true})
+  )
+  navigator.storage.estimate().then(({quota, usage}) => {
+    if (usage / quota > EVICTION_THRESHOLD) { // TODO: do multiple evictions if still over?
+      db.transaction('lru').objectStore('lru').index('').openCursor().addEventListener(
+        'success', (e) => e.target.result.delete(), {passive: true}
+      )
+    }
+  })
+  return computed
+}
 
 function renderCalendar(data) {
   const calFrag = document.createDocumentFragment()
@@ -478,50 +520,44 @@ const mergeIntoDay = (day, r) => Object.entries(day).forEach(
 )
 
 async function validatorPerformance(validatorIndex, fromSlot, toSlot) {
-  const slotsKey = `${fromSlot}-${toSlot}`
-  const tryCache = minipoolPerformanceCache.get(validatorIndex)
-  const cached = tryCache?.get(slotsKey)
-  if (cached) return cached
-  const cache = tryCache ||
-    minipoolPerformanceCache.set(
-      validatorIndex, new Map()).get(
-        validatorIndex)
-  let min = fromSlot
-  let max
-  const result = {...emptyDay()}
-  while (min <= toSlot) {
-    max = Math.min(toSlot, min + MAX_SLOT_QUERY_RANGE - 1)
-    const chunkKey = `${min}-${max}`
-    const chunk = cache.get(chunkKey) ||
-      await new Promise((resolve, reject) => {
-        socket.emit('validatorPerformance', validatorIndex, min, max,
-          (v) => {
-            if ('error' in v) return reject(v.error)
-            Object.entries(v).forEach(([key, duty]) => {
-              if (key == 'slots') return
-              duty.reward = BigInt(duty.reward)
-              duty.slots = rangesToSet(duty.slots)
-            })
-            cache.set(chunkKey, v)
-            resolve(v)
+  async function missHandler() {
+    let min = fromSlot
+    let max
+    const result = {...emptyDay()}
+    while (min <= toSlot) {
+      max = Math.min(toSlot, min + MAX_SLOT_QUERY_RANGE - 1)
+      const chunkKey = `${min}-${max}`
+      const chunk = await cacheRetrieve([validatorIndex], min, max,
+        () => new Promise(
+          (resolve, reject) => {
+            socket.emit('validatorPerformance', validatorIndex, min, max,
+              (v) => {
+                if ('error' in v) return reject(v.error)
+                Object.entries(v).forEach(([key, duty]) => {
+                  if (key == 'slots') return
+                  duty.reward = BigInt(duty.reward)
+                  duty.slots = rangesToSet(duty.slots)
+                })
+                resolve(v)
+              }
+            )
           }
         )
-      })
-    mergeIntoDay(result, chunk)
-    min = max + 1
+      )
+      mergeIntoDay(result, chunk)
+      min = max + 1
+    }
+    return result
   }
-  cache.set(slotsKey, result)
-  return result
+  return await cacheRetrieve([validatorIndex], fromSlot, toSlot, missHandler)
 }
 
 const updatePerformanceDetails = async () => {
   const fromValue = parseInt(fromSlot.value)
   const toValue = parseInt(toSlot.value)
   if (0 <= fromValue && fromValue <= toValue) {
-    const indices = validatorIndicesInTable()
-    const indicesKey = compressIndices(indices.toSorted(numericCollator.compare))
-    const groupCache = minipoolsPerformanceCache.get(indicesKey) || new Map()
-    if (!minipoolsPerformanceCache.has(indicesKey)) minipoolsPerformanceCache.set(indicesKey, groupCache)
+    const indices = validatorIndicesInTable().map(i => parseInt(i))
+    indices.sort(compareNumbers)
     const date = await new Promise(resolve =>
       socket.emit('slotToTimestamp', fromValue, (ts) =>
         resolve(new Date(ts * 1000))
@@ -532,7 +568,6 @@ const updatePerformanceDetails = async () => {
     let resolveRender
     const waitForRender = new Promise(resolve => resolveRender = resolve)
     async function fillDay(dayObj, dateKey) {
-      console.log(`In fillDay ${dateKey} has slots ${dayObj.slots.min}-${dayObj.slots.max}`)
       addTotals(dayObj)
       const day = dateKey.split('-').at(-1)
       await waitForRender
@@ -580,32 +615,29 @@ const updatePerformanceDetails = async () => {
     const collectDayData = (min, max) => {
       const dateKey = `${currentYearKey}-${currentMonthKey}-${currentDayKey}`
       const dayToFill = currentDay
-      console.log(`Using ${min}-${max} for ${dateKey}`)
       dayToFill.slots = {min, max}
       daysFilled.push(
         new Promise(async resolve => {
-          const slotsKey = `${min}-${max}`
-          const dayObj = groupCache.get(slotsKey)
-          if (dayObj) {
-            console.log(`Getting ${dateKey} (${slotsKey}) dayObj from cache`)
-            Object.entries(dayObj).forEach(([k, v]) => dayToFill[k] = v)
-            return resolve(await fillDay(dayToFill, dateKey))
-          }
-          const getValidatorPerformance = indices.map(validatorIndex => async () => {
-            const validatorDayObj = await validatorPerformance(
-              validatorIndex, min, max
-            ).catch((e) => {
-              // TODO: indicate error on page?
-              console.warn(`error getting ${validatorIndex} dayObj ${slotsKey}: ${JSON.stringify(e)}`)
-              return {}
+          async function missHandler() {
+            const getValidatorPerformance = indices.map(validatorIndex => async () => {
+              const validatorDayObj = await validatorPerformance(
+                validatorIndex, min, max
+              ).catch((e) => {
+                // TODO: indicate error on page?
+                console.warn(`error getting ${validatorIndex} ${min}-${max}: ${JSON.stringify(e)}`)
+                return {}
+              })
+              mergeIntoDay(dayToFill, validatorDayObj)
             })
-            mergeIntoDay(dayToFill, validatorDayObj)
-          })
-          while (getValidatorPerformance.length) {
-            const chunk = getValidatorPerformance.splice(0, MAX_CONCURRENT_VALIDATORS)
-            await Promise.all(chunk.map(f => f()))
+            while (getValidatorPerformance.length) {
+              const chunk = getValidatorPerformance.splice(0, MAX_CONCURRENT_VALIDATORS)
+              await Promise.all(chunk.map(f => f()))
+            }
+            return dayToFill
           }
-          groupCache.set(slotsKey, dayToFill)
+          const dayObj = await cacheRetrieve(indices, min, max, missHandler)
+          if (dayObj !== dayToFill)
+            Object.entries(dayObj).forEach(([k, v]) => dayToFill[k] = v)
           return resolve(await fillDay(dayToFill, dateKey))
         })
       )
@@ -1136,8 +1168,6 @@ window.addEventListener('popstate', setParamsFromUrl, {passive: true})
 
 setParamsFromUrl()
 
-// TODO: store caches in local storage, not just memory?
-// TODO: add cache eviction
 // TODO: put selected minipools within its own scroll area (to limit vertical space usage)
 // TODO: add dual range slider input for slot selection
 // TODO: add attestation accuracy and reward info

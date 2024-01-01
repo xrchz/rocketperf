@@ -14,6 +14,8 @@ const MAX_QUERY_RANGE = 1000
 const MAX_ARGS = 10000
 const MAX_BEACON_RANGE = 100
 
+let running = true
+
 const arrayMin = (a) => {
   let min = Infinity
   while (a.length) min = Math.min(min, ...a.splice(0, MAX_ARGS))
@@ -23,7 +25,7 @@ const arrayMin = (a) => {
 const arrayPromises = async (a, max, logger) => {
   log(`Processing ${a.length} promises ${max} at a time`)
   const result = []
-  while (a.length) {
+  while (running && a.length) {
     logger(a.length)
     result.push(...await Promise.all(a.splice(0, max).map(f => f())))
   }
@@ -220,8 +222,6 @@ async function getWorker() {
   return data.worker
 }
 
-let running = true
-
 async function processEpochsLoop(finalizedSlot, dutiesOnly) {
   const uptoKey = dutiesOnly ? `dutiesEpoch` : `nextEpoch`
 
@@ -284,6 +284,8 @@ async function processEpochs() {
 
   processedMinipoolCount = targetMinipoolCount
 
+  if (!running) return
+
   await arrayPromises(
     validatorIdsToProcess.map(validatorIndex =>
       async () => {
@@ -315,8 +317,14 @@ process.on('SIGINT', async () => {
   await provider.removeAllListeners('block')
   log(`Terminating workers...`)
   workers.forEach(({worker}) => worker.postMessage({interrupt: true}))
-  await Promise.all(workers.map(({promise}, i) => promise.then(() => log(`Worker ${i} finished`))))
-  workers.forEach(({worker}) => worker.terminate())
+  await Promise.all(
+    workers.map(({worker, promise}, i) =>
+      promise.then(() => {
+        log(`Worker ${i} finished`)
+        return worker.terminate()
+      })
+    )
+  )
   log(`Closing db...`)
   await db.close()
   process.exit()

@@ -51,6 +51,9 @@ async function getAttestationDuties(epoch, validatorIds) {
     `/eth/v1/beacon/states/${firstSlotInEpoch}/committees?epoch=${epoch}`,
     beaconRpcUrl
   )
+
+  if (!running) return
+
   const committees = await fetch(attestationDutiesUrl).then(async res => {
     if (res.status !== 200)
       throw new Error(`Got ${res.status} fetching attestation duties for ${epoch}: ${await res.text()}`)
@@ -58,7 +61,9 @@ async function getAttestationDuties(epoch, validatorIds) {
     return json.data
   })
   for (const {index, slot, validators} of committees) {
+    if (!running) break
     for (const [position, selectedIndex] of validators.entries()) {
+      if (!running) break
       if (validatorIds.has(selectedIndex)) {
         const attestationKey = `${chainId}/validator/${selectedIndex}/attestation/${epoch}`
         const attestation = db.get(attestationKey) || {}

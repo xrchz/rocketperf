@@ -30,7 +30,7 @@ const lowerAlpha = Array(26).fill().map((u,i) => (i+10).toString(36))
 const upperAlpha = lowerAlpha.map(c => c.toUpperCase())
 const digits = Array(10).fill().map((u,i) => i.toString())
 
-const encodableChars = digits.concat(lowerAlpha).concat(['-',SOS])
+const encodableChars = digits.concat(lowerAlpha).concat([' ',SOS])
 
 const naiveMTF = (s) => {
   const dict = encodableChars.slice()
@@ -54,7 +54,7 @@ const invertNaiveMTF = (a) => {
 
 // https://url.spec.whatwg.org/#application-x-www-form-urlencoded-percent-encode-set
 // allowed characters = lowerAlpha + upperAlpha + digits + ['-', '.', '_', '*', ' ']
-const replacementChars = upperAlpha.concat(['.','*',' ']) // without encodableChars
+const replacementChars = upperAlpha.concat(['.','*','-']) // without encodableChars
 const naiveBPE = (s) => {
   const availableReplacements = replacementChars.slice()
   let r = s
@@ -108,7 +108,7 @@ const invertNaiveBPE = (s) => {
   return r.join('')
 }
 
-const joinBase36 = a => a.map(i => parseInt(i).toString(36)).join('-')
+const joinBase36 = a => a.map(i => parseInt(i).toString(36)).join(' ')
 
 const compressIndices = (a) => naiveBPE(
   naiveMTF(naiveBWT(joinBase36(a)))
@@ -117,7 +117,7 @@ const compressIndices = (a) => naiveBPE(
 const decompressIndices = (s) => s ?
   invertNaiveBWT(invertNaiveMTF(invertNaiveBPE(s).split('')
     .map(c => encodableChars.indexOf(c))))
-  .split('-').map(x => parseInt(x, 36))
+  .split(' ').map(x => parseInt(x, 36))
   : []
 
 const idReplacements = new Map([['%', 'P'], ['(', 'L'], [')', 'R']])
@@ -478,7 +478,7 @@ async function updateSlotRange() {
       if (indices.length) {
         if (indices.length <= MAX_QUERY_INDICES) {
           thisUrl.searchParams.delete('i')
-          thisUrl.searchParams.set('v', indices.join('-'))
+          thisUrl.searchParams.set('v', indices.join(' '))
         }
         else {
           thisUrl.searchParams.delete('v')
@@ -973,7 +973,7 @@ async function setParamsFromUrl() {
 
   let promise
 
-  const urlValidators = thisUrl.searchParams.get('v')?.split('-') ||
+  const urlValidators = thisUrl.searchParams.get('v')?.split(' ') ||
     decompressIndices(thisUrl.searchParams.get('i'))
   if (urlValidators.length) {
     promise = new Promise(resolve => waitingForMinipools.push(resolve))
@@ -1004,7 +1004,6 @@ setParamsFromUrl()
 // TODO: add range slider input for slot selection
 // TODO: add attestation accuracy and reward info
 // TODO: disable add/sub buttons when they won't work?
-// TODO: use ' ' ('+') as separator instead of '-' in v?
 // TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?
 // TODO: server sends "update minimum/maximum slot" messages whenever finalized increases?
 // TODO: add NO portion of rewards separately from validator rewards? (need to track commission and borrow)

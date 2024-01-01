@@ -137,6 +137,25 @@ function formatUnits(wei, decimals) {
 const formatEther = wei => formatUnits(wei, 18)
 const formatGwei = wei => formatUnits(wei, 9)
 
+const secondsPerSlot = 12
+const minutesPerHour = 60
+const secondsPerMinute = 60
+const secondsPerHour = minutesPerHour * secondsPerMinute
+const slotsPerHour = secondsPerHour / secondsPerSlot
+const hoursPerDay = 24
+const slotsPerDay = slotsPerHour * hoursPerDay
+const daysPerWeek = 7
+const slotsPerWeek = slotsPerDay * daysPerWeek
+const daysPerMonth = 30.4375
+const slotsPerMonth = Math.round(slotsPerDay * daysPerMonth)
+const daysPerYear = 365.25
+const slotsPerYear = Math.round(slotsPerDay * daysPerYear)
+
+const MAX_SLOT_QUERY_RANGE = slotsPerHour
+const MAX_CONCURRENT_VALIDATORS = 4
+
+const MAX_QUERY_STRING_INDICES = 64
+
 const titleHeading = document.createElement('h1')
 const entryHeading = document.createElement('h2')
 const selectedHeading = document.createElement('h2')
@@ -395,17 +414,240 @@ const validatorIndicesInTable = () => Array.from(
   minipoolsList.querySelectorAll('td.validator > a')
 ).flatMap(a => isIncluded(a) ? [a.innerText] : [])
 
-const updatePerformanceDetails = () => {
+// map of maps: compressed-(sorted-indices)-string -> slot-range-string -> day object
+const minipoolsPerformanceCache = new Map()
+// map of maps: validatorIndex-string -> slot-range-string -> day object
+const minipoolPerformanceCache = new Map()
+
+function renderCalendar(data) {
+  const calFrag = document.createDocumentFragment()
+  for (const year of Object.keys(data).map(k => parseInt(k))) {
+    const yearContainer = calFrag.appendChild(document.createElement('div'))
+    yearContainer.classList.add('yearContainer')
+    yearContainer.appendChild(document.createElement('span')).innerText = year
+    const yearDiv = yearContainer.appendChild(document.createElement('div'))
+    yearDiv.classList.add('year')
+    const yearObj = data[year]
+    for (const month of Object.keys(yearObj).map(k => parseInt(k))) {
+      const monthContainer = yearDiv.appendChild(document.createElement('div'))
+      monthContainer.classList.add('monthContainer')
+      monthContainer.appendChild(document.createElement('span')).innerText = monthNames[month].slice(0, 3)
+      const monthDiv = monthContainer.appendChild(document.createElement('div'))
+      monthDiv.classList.add('month')
+      const monthObj = yearObj[month]
+      const days = Object.keys(monthObj).map(k => parseInt(k))
+      const spacerDays = days[0] - 1
+      const monthSpacerDays = new Date(`${year}-${month + 1}-1`).getUTCDay()
+      for (const spacerDay of Array(monthSpacerDays + spacerDays).fill()) {
+        const dayDiv = monthDiv.appendChild(document.createElement('div'))
+        dayDiv.classList.add('day', 'spacer')
+      }
+      for (const day of days) {
+        const dayDiv = monthDiv.appendChild(document.createElement('div'))
+        dayDiv.classList.add('day', 'loading')
+        dayDiv.appendChild(document.createElement('span')).innerText = '…'
+        dayDiv.id = `${year}-${month}-${day}`
+      }
+    }
+  }
+  detailsDiv.replaceChildren(calFrag)
+}
+
+const rangesToSet = (a) => {
+  const r = new Set()
+  a.forEach(v => {
+    if (typeof v == 'number') r.add(v)
+    else while (v.min <= v.max) r.add(v.min++)
+  })
+  return r
+}
+
+const emptyDutyData = () => ({ duties: 0, missed: 0, reward: 0n, slots: new Set() })
+const emptyDay = () => ({
+  attestations: {...emptyDutyData()},
+  proposals: {...emptyDutyData()},
+  syncs: {...emptyDutyData()}
+})
+const addTotal = (t, d) => Object.keys(t).forEach(k => t[k] += d[k])
+const mergeIntoDuty = (d, x) => Object.keys(d).forEach(k =>
+  k == 'slots' ? x[k].forEach(v => d[k].add(v))
+  : d[k] += x[k]
+)
+const mergeIntoDay = (day, r) => Object.entries(day).forEach(
+  ([k, duty]) => k != 'slots' && k in r && mergeIntoDuty(duty, r[k])
+)
+
+async function validatorPerformance(validatorIndex, fromSlot, toSlot) {
+  const slotsKey = `${fromSlot}-${toSlot}`
+  const tryCache = minipoolPerformanceCache.get(validatorIndex)
+  const cached = tryCache?.get(slotsKey)
+  if (cached) return cached
+  const cache = tryCache ||
+    minipoolPerformanceCache.set(
+      validatorIndex, new Map()).get(
+        validatorIndex)
+  let min = fromSlot
+  let max
+  const result = {...emptyDay()}
+  while (min <= toSlot) {
+    max = Math.min(toSlot, min + MAX_SLOT_QUERY_RANGE - 1)
+    const chunkKey = `${min}-${max}`
+    const chunk = cache.get(chunkKey) ||
+      await new Promise((resolve, reject) => {
+        socket.emit('validatorPerformance', validatorIndex, min, max,
+          (v) => {
+            if ('error' in v) return reject(v.error)
+            Object.entries(v).forEach(([key, duty]) => {
+              if (key == 'slots') return
+              duty.reward = BigInt(duty.reward)
+              duty.slots = rangesToSet(duty.slots)
+            })
+            cache.set(chunkKey, v)
+            resolve(v)
+          }
+        )
+      })
+    mergeIntoDay(result, chunk)
+    min = max + 1
+  }
+  cache.set(slotsKey, result)
+  return result
+}
+
+const updatePerformanceDetails = async () => {
   const fromValue = parseInt(fromSlot.value)
   const toValue = parseInt(toSlot.value)
-  const minipools = minipoolsInTable()
-  if (0 <= fromValue && fromValue <= toValue && minipools.length) {
-    console.log(`Asking for perfDetails ${fromValue} - ${toValue}`)
-    socket.volatile.emit('perfDetails', fromValue, toValue, minipools)
+  if (0 <= fromValue && fromValue <= toValue) {
+    const indices = validatorIndicesInTable()
+    const indicesKey = compressIndices(indices.toSorted(numericCollator.compare))
+    const groupCache = minipoolsPerformanceCache.get(indicesKey) || new Map()
+    if (!minipoolsPerformanceCache.has(indicesKey)) minipoolsPerformanceCache.set(indicesKey, groupCache)
+    const date = await new Promise(resolve =>
+      socket.emit('slotToTimestamp', fromValue, (ts) =>
+        resolve(new Date(ts * 1000))
+      )
+    )
+    const totals = {...emptyDay()}
+    const addTotals = (day) => Object.entries(day).forEach(([k, v]) => k in totals && addTotal(totals[k], v))
+    let resolveRender
+    const waitForRender = new Promise(resolve => resolveRender = resolve)
+    async function fillDay(dayObj, dateKey) {
+      console.log(`In fillDay ${dateKey} has slots ${dayObj.slots.min}-${dayObj.slots.max}`)
+      addTotals(dayObj)
+      const day = dateKey.split('-').at(-1)
+      await waitForRender
+      const dayDiv = document.getElementById(dateKey)
+      dayDiv.firstElementChild.innerText = day
+      const {totalDuties, totalMissed} = Object.values(dayObj).filter(d => 'duties' in d).reduce(
+        ({totalDuties, totalMissed}, {duties, missed}) =>
+        ({totalDuties: totalDuties + duties, totalMissed: totalMissed + missed}),
+        {totalDuties: 0, totalMissed: 0}
+      )
+      const performance = (totalDuties - totalMissed) / totalDuties
+      const performanceDecile = totalDuties ?
+        (totalMissed ? Math.round(performance * 10) * 10 : 'all')
+        : 'nil'
+      dayDiv.classList.add(`perf${performanceDecile}`)
+      const dayObjKeys = Object.keys(dayObj).slice(0, -1)
+      const proposalSlots = (key, slots) => key === 'proposals' ? ` (${Array.from(slots).join(',')})` : ''
+      const dutyLine = (key, {duties, missed, reward, slots}) =>
+        `${duties - missed}/${duties}${proposalSlots(key, slots)}: ${formatGwei(reward)} gwei`
+      const dutyTitle = (key) => (
+        (dayObj[key].duties || dayObj[key].reward) &&
+        dutyLine(key, dayObj[key])
+      )
+      const titleLines = [`${dayObj.slots.min}–${dayObj.slots.max}`].concat(
+        dayObjKeys.flatMap(k => {
+          const t = dutyTitle(k)
+          return t ? [`${k[0].toUpperCase()}: ${t}`] : []
+        })
+      )
+      dayDiv.title = titleLines.join('\n')
+      dayDiv.classList.remove('loading')
+      if (dayObj.proposals.duties)
+        dayDiv.classList.add('proposer')
+    }
+    let currentDay = {...emptyDay()}
+    let currentDayKey = date.getUTCDate()
+    let currentMonth = {[currentDayKey]: currentDay}
+    let currentMonthKey = date.getUTCMonth()
+    let currentYear = {[currentMonthKey]: currentMonth}
+    let currentYearKey = date.getUTCFullYear()
+    const data = {[currentYearKey]: currentYear}
+    let slot = fromValue
+    let unfilledFrom = slot
+    const daysFilled = []
+    const collectDayData = (min, max) => {
+      const dateKey = `${currentYearKey}-${currentMonthKey}-${currentDayKey}`
+      const dayToFill = currentDay
+      console.log(`Using ${min}-${max} for ${dateKey}`)
+      dayToFill.slots = {min, max}
+      daysFilled.push(
+        new Promise(async resolve => {
+          const slotsKey = `${min}-${max}`
+          const dayObj = groupCache.get(slotsKey)
+          if (dayObj) {
+            console.log(`Getting ${dateKey} (${slotsKey}) dayObj from cache`)
+            Object.entries(dayObj).forEach(([k, v]) => dayToFill[k] = v)
+            return resolve(await fillDay(dayToFill, dateKey))
+          }
+          const getValidatorPerformance = indices.map(validatorIndex => async () => {
+            const validatorDayObj = await validatorPerformance(
+              validatorIndex, min, max
+            ).catch((e) => {
+              // TODO: indicate error on page?
+              console.warn(`error getting ${validatorIndex} dayObj ${slotsKey}: ${JSON.stringify(e)}`)
+              return {}
+            })
+            mergeIntoDay(dayToFill, validatorDayObj)
+          })
+          while (getValidatorPerformance.length) {
+            const chunk = getValidatorPerformance.splice(0, MAX_CONCURRENT_VALIDATORS)
+            await Promise.all(chunk.map(f => f()))
+          }
+          groupCache.set(slotsKey, dayToFill)
+          return resolve(await fillDay(dayToFill, dateKey))
+        })
+      )
+    }
+    while (slot++ <= toValue) {
+      date.setMilliseconds(secondsPerSlot * 1000)
+      if (currentDayKey !== date.getUTCDate()) {
+        collectDayData(unfilledFrom, slot-1)
+        unfilledFrom = slot
+        currentDay = {...emptyDay()}
+        currentDayKey = date.getUTCDate()
+        if (currentMonthKey !== date.getUTCMonth()) {
+          currentMonthKey = date.getUTCMonth()
+          currentMonth = {}
+          if (currentYearKey !== date.getUTCFullYear()) {
+            currentYearKey = date.getUTCFullYear()
+            currentYear = {}
+            data[currentYearKey] = currentYear
+          }
+          currentYear[currentMonthKey] = currentMonth
+        }
+        currentMonth[currentDayKey] = currentDay
+      }
+    }
+    if (unfilledFrom <= toValue) collectDayData(unfilledFrom, toValue)
+    resolveRender(renderCalendar(data))
+    await Promise.all(daysFilled)
+    const allSummaryTotals = {...emptyDutyData()}
+    Object.values(totals).forEach(d => addTotal(allSummaryTotals, d))
+    for (const h of summaryHeadings) {
+      const td = document.getElementById(`td-${toId(h)}`)
+      td.innerText = summaryFromDuty(h, allSummaryTotals)
+    }
+    for (const [dh, duty] of Object.entries(totals)) {
+      for (const h of summaryHeadings) {
+        const td = document.getElementById(`td-${toId(dh)}-${toId(h)}`)
+        td.innerText = summaryFromDuty(h, duty)
+      }
+    }
+    summaryDiv.classList[allSummaryTotals.duties ? 'remove' : 'add']('hidden')
   }
-  else {
-    console.warn(`Rejected perfDetails ${fromValue} - ${toValue}`)
-  }
+  else console.warn(`Skipping getting details for invalid slot range ${fromValue} - ${toValue}`)
 }
 
 const setTimeFromSlot = ({slot, dateInput, timeInput}) =>
@@ -418,8 +660,6 @@ const setTimeFromSlot = ({slot, dateInput, timeInput}) =>
       }
     )
   )
-
-const MAX_QUERY_INDICES = 64
 
 const waitingForMinipools = []
 const waitingForSlotRangeLimits = []
@@ -476,7 +716,7 @@ async function updateSlotRange() {
     if (slotRangeLimits.validatorsChanged) {
       const indices = validatorIndicesInTable()
       if (indices.length) {
-        if (indices.length <= MAX_QUERY_INDICES) {
+        if (indices.length <= MAX_QUERY_STRING_INDICES) {
           thisUrl.searchParams.delete('i')
           thisUrl.searchParams.set('v', indices.join(' '))
         }
@@ -491,8 +731,8 @@ async function updateSlotRange() {
       }
     }
     window.history.pushState(null, '', thisUrl)
-    updatePerformanceDetails()
     delete slotRangeLimits.validatorsChanged
+    await updatePerformanceDetails()
   }
   else {
     console.log(`Unchanged (ignored): ${fromOld} - ${toOld} to ${fromNew} - ${toNew}`)
@@ -595,19 +835,6 @@ fromButtons.classList.add('dirRangeButtons')
 fromButtons.classList.add('from')
 toButtons.classList.add('dirRangeButtons')
 toButtons.classList.add('to')
-const secondsPerSlot = 12
-const minutesPerHour = 60
-const secondsPerMinute = 60
-const secondsPerHour = minutesPerHour * secondsPerMinute
-const slotsPerHour = secondsPerHour / secondsPerSlot
-const hoursPerDay = 24
-const slotsPerDay = slotsPerHour * hoursPerDay
-const daysPerWeek = 7
-const slotsPerWeek = slotsPerDay * daysPerWeek
-const daysPerMonth = 30.4375
-const slotsPerMonth = Math.round(slotsPerDay * daysPerMonth)
-const daysPerYear = 365.25
-const slotsPerYear = Math.round(slotsPerDay * daysPerYear)
 const timeIncrements = [
   {name: 'hour',  slots: slotsPerHour},
   {name: 'day',   slots: slotsPerDay},
@@ -736,95 +963,6 @@ detailsDiv.id = 'details'
 
 const compareNumbers = (a,b) => a - b
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-
-const emptyDutyData = { duties: 0, missed: 0, reward: 0n }
-const emptyDay = () => ({
-  attestations: {...emptyDutyData},
-  proposals: {...emptyDutyData},
-  syncs: {...emptyDutyData}
-})
-const addTotal = (t, d) => Object.keys(t).forEach(k => t[k] += d[k])
-
-socket.on('perfDetails', data => {
-  // <data> = { <year>: {<month>: {<day>: {attestations: <dutyData>, proposals: <dutyData>, syncs: <dutyData>, slots: {min: <num>, max: <num>}}, ...}, ...}, ...}
-  // <dutyData> = { duties: <num>, missed: <num>, reward: <string(bigint)>, slots: <Array[num]> }
-  // console.log(`Received perfDetails: ${JSON.stringify(data)}`)
-  const totals = {...emptyDay()}
-  const addTotals = (day) => Object.entries(day).forEach(([k, v]) => k != 'slots' && addTotal(totals[k], v))
-  for (const year of Object.keys(data).map(k => parseInt(k)).toSorted(compareNumbers)) {
-    const yearContainer = frag.appendChild(document.createElement('div'))
-    yearContainer.classList.add('yearContainer')
-    yearContainer.appendChild(document.createElement('span')).innerText = year
-    const yearDiv = yearContainer.appendChild(document.createElement('div'))
-    yearDiv.classList.add('year')
-    const yearObj = data[year]
-    for (const month of Object.keys(yearObj).map(k => parseInt(k)).toSorted(compareNumbers)) {
-      const monthContainer = yearDiv.appendChild(document.createElement('div'))
-      monthContainer.classList.add('monthContainer')
-      monthContainer.appendChild(document.createElement('span')).innerText = monthNames[month].slice(0, 3)
-      const monthDiv = monthContainer.appendChild(document.createElement('div'))
-      monthDiv.classList.add('month')
-      const monthObj = yearObj[month]
-      const days = Object.keys(monthObj).map(k => parseInt(k)).toSorted(compareNumbers)
-      const spacerDays = days[0] - 1
-      const monthSpacerDays = new Date(`${year}-${month + 1}-1`).getUTCDay()
-      for (const spacerDay of Array(monthSpacerDays + spacerDays).fill()) {
-        const dayDiv = monthDiv.appendChild(document.createElement('div'))
-        dayDiv.classList.add('day')
-        dayDiv.classList.add('spacer')
-      }
-      for (const day of days) {
-        const dayObj = monthObj[day]
-        const dayDiv = monthDiv.appendChild(document.createElement('div'))
-        dayDiv.classList.add('day')
-        dayDiv.appendChild(document.createElement('span')).innerText = day
-        const {totalDuties, totalMissed} = Object.values(dayObj).filter(d => 'duties' in d).reduce(
-          ({totalDuties, totalMissed}, {duties, missed}) =>
-          ({totalDuties: totalDuties + duties, totalMissed: totalMissed + missed}),
-          {totalDuties: 0, totalMissed: 0}
-        )
-        const performance = (totalDuties - totalMissed) / totalDuties
-        const performanceDecile = totalDuties ?
-          (totalMissed ? Math.round(performance * 10) * 10 : 'all')
-          : 'nil'
-        dayDiv.classList.add(`perf${performanceDecile}`)
-        const dayObjKeys = Object.keys(dayObj).slice(0, -1)
-        dayObjKeys.forEach(k => dayObj[k].reward = BigInt(dayObj[k].reward))
-        const proposalSlots = (key, slots) => key === 'proposals' ? ` (${slots.join(',')})` : ''
-        const dutyLine = (key, {duties, missed, reward, slots}) =>
-          `${duties - missed}/${duties}${proposalSlots(key, slots)}: ${formatGwei(reward)} gwei`
-        const dutyTitle = (key) => (
-          (dayObj[key].duties || dayObj[key].reward) &&
-          dutyLine(key, dayObj[key])
-        )
-        const titleLines = [`${dayObj.slots.min}–${dayObj.slots.max}`].concat(
-          dayObjKeys.flatMap(k => {
-            const t = dutyTitle(k)
-            return t ? [`${k[0].toUpperCase()}: ${t}`] : []
-          })
-        )
-        dayDiv.title = titleLines.join('\n')
-        if (dayObj.proposals.duties)
-          dayDiv.classList.add('proposer')
-        addTotals(dayObj)
-      }
-    }
-  }
-  detailsDiv.replaceChildren(frag)
-  const allSummaryTotals = {...emptyDutyData}
-  Object.values(totals).forEach(d => addTotal(allSummaryTotals, d))
-  for (const h of summaryHeadings) {
-    const td = document.getElementById(`td-${toId(h)}`)
-    td.innerText = summaryFromDuty(h, allSummaryTotals)
-  }
-  for (const [dh, duty] of Object.entries(totals)) {
-    for (const h of summaryHeadings) {
-      const td = document.getElementById(`td-${toId(dh)}-${toId(h)}`)
-      td.innerText = summaryFromDuty(h, duty)
-    }
-  }
-  summaryDiv.classList[allSummaryTotals.duties ? 'remove' : 'add']('hidden')
-})
 
 const changeSelectedBoxes = () => {
   const indices = validatorIndicesInTable()
@@ -998,18 +1136,19 @@ window.addEventListener('popstate', setParamsFromUrl, {passive: true})
 
 setParamsFromUrl()
 
-// TODO: improve performance for loading results (caching? do more on client? parallelise fetching per day/month?, caching client-side)
-// TODO: add loading (and out-of-date) indication for results/details
-// TODO: add volatility delay before responding to user input changes to selected minipools or slots
-// TODO: add range slider input for slot selection
+// TODO: store caches in local storage, not just memory?
+// TODO: add cache eviction
+// TODO: put selected minipools within its own scroll area (to limit vertical space usage)
+// TODO: add dual range slider input for slot selection
 // TODO: add attestation accuracy and reward info
 // TODO: disable add/sub buttons when they won't work?
 // TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?
 // TODO: server sends "update minimum/maximum slot" messages whenever finalized increases?
 // TODO: add NO portion of rewards separately from validator rewards? (need to track commission and borrow)
-// TODO: check (and handle) URL length limit? e.g. store on server for socketid (with ttl)
-// TODO: put selected minipools within its own scroll area (to limit vertical space usage)
+// TODO: check (and handle) URL length limit? e.g. store on server for socketid (with ttl) when too long
+// TODO: add volatility delay before responding to user input changes to selected minipools or slots (for checkboxes, spinners, sliders only)?
 // TODO: add copy for whole table?
+// TODO: add tool for selecting minipools from the list by "painting"?
 // TODO: speed up compression/decompression of indices?
 // TODO: make certain css colors (and maybe other styles) editable?
 // TODO: make weekday start configurable (Sun vs Mon)?

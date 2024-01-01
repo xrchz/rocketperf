@@ -124,6 +124,12 @@ div.day.spacer {
 div.day.proposer {
   border: medium solid gold;
 }
+div.day.loading {
+  background-color: sandybrown;
+}
+div.day.loading > span {
+  color: firebrick;
+}
 div.day {
   height: 2em;
   width: 2em;

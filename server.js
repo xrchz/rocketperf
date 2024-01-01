@@ -211,6 +211,30 @@ const mergeIntoDay = (day, r, slot) => Object.entries(day).forEach(([k, duty]) =
   else if (k in r) mergeIntoDuty(duty, r[k])
 })
 
+const setToRanges = (s) => {
+  const a = Array.from(s)
+  a.sort((x, y) => x - y)
+  const r = []
+  const fixLast = (l) => {
+    if (l && l.max - l.min < 2)
+      r.splice(-1, 1,
+        ...(l.max === l.min ? [l.min] : [l.min, l.max])
+      )
+  }
+  while (a.length) {
+    const n = a.shift()
+    const l = r.at(-1)
+    if (n === l?.max + 1)
+      l.max = n
+    else {
+      fixLast(l)
+      r.push({min: n, max: n})
+    }
+  }
+  fixLast(r.at(-1))
+  return r
+}
+
 io.on('connection', socket => {
 
   log(`connection: ${socket.id}`)
@@ -270,102 +294,67 @@ io.on('connection', socket => {
     callback(dateToDateTime(date))
   })
 
-  socket.on('perfDetails', async (fromSlot, toSlot, minipoolAddresses) => {
-    const finalizedSlot = await getFinalizedSlot()
-    if (!(0 <= fromSlot && fromSlot <= toSlot && toSlot <= finalizedSlot)) {
-      console.warn(`Invalid slot range [${fromSlot}, ${toSlot}] (finalized ${finalizedSlot})`)
-      return
-    }
-    const resultsBySlot = Array(toSlot - fromSlot + 1).fill().map(() => ({}))
-    for (const minipoolAddress of minipoolAddresses) {
-      const pubkey = await rocketMinipoolManager.getMinipoolPubkey(minipoolAddress)
-      const validatorIndex = await getIndexFromPubkey(pubkey)
-      const activationEpoch = epochFromActivationInfo(db.get(`${chainId}/validator/${validatorIndex}/activationInfo`))
-      const nextEpoch = db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`)
-      if (typeof(nextEpoch) != 'number' || nextEpoch < epochOfSlot(toSlot)) {
-        console.warn(`Failed to include perfDetails for ${minipoolAddress}: nextEpoch ${nextEpoch} before ${fromSlot}-${toSlot}`)
-        continue
-      }
-      if (typeof(activationEpoch) != 'number' || epochOfSlot(toSlot) < activationEpoch) {
-        log(`Skipping perfDetails for ${minipoolAddress}: activationEpoch ${activationEpoch} after ${fromSlot}-${toSlot}`)
-        continue
-      }
-      for (const [slotOffset, result] of resultsBySlot.entries()) {
-        const slot = fromSlot + slotOffset
-        const epoch = epochOfSlot(slot)
-        if (epoch < activationEpoch) continue
-        const attestation = db.get(`${chainId}/validator/${validatorIndex}/attestation/${epoch}`)
-        if (attestation?.slot === slot) {
-          const attestations = result.attestations || {...emptyDutyData()}
-          attestations.duties += 1
-          if (!attestation.attested)
-            attestations.missed += 1
-          for (const rewardType of ['head', 'target', 'source', 'inactivity'])
-            attestations.reward += BigInt(attestation.reward[rewardType])
-          attestations.slots.add(slot)
-          result.attestations = attestations
-        }
+  socket.on('slotToTimestamp', (slot, callback) =>
+    callback(slotToTime(slot))
+  )
 
-        const proposal = db.get(`${chainId}/validator/${validatorIndex}/proposal/${slot}`)
-        if (proposal) {
-          const proposals = result.proposals || {...emptyDutyData()}
-          proposals.duties += 1
-          if (proposal.missed)
-            proposals.missed += 1
-          proposals.reward += BigInt(proposal.reward)
-          proposals.slots.add(slot)
-          result.proposals = proposals
-        }
+  socket.on('validatorPerformance', async (validatorIndex, fromSlot, toSlot, callback) => {
+    // log(`${socket.id} requesting validatorPerformance ${validatorIndex} ${fromSlot} ${toSlot}`)
+    const result = {}
+    const activationEpoch = epochFromActivationInfo(db.get(`${chainId}/validator/${validatorIndex}/activationInfo`))
+    const nextEpoch = db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`)
+    if (typeof(nextEpoch) != 'number' || nextEpoch < epochOfSlot(toSlot))
+      return callback({error: {nextEpoch}})
+    if (typeof(activationEpoch) != 'number' || epochOfSlot(toSlot) < activationEpoch)
+      return callback({error: {activationEpoch}})
+    const day = {...emptyDay()}
+    day.slots.min = fromSlot
+    day.slots.max = toSlot
+    let slot = Math.max(fromSlot, activationEpoch * slotsPerEpoch)
+    while (slot <= toSlot) {
+      // log(`Up to slot ${slot} out of ${toSlot} for ${validatorIndex} for ${socket.id}`)
+      const epoch = epochOfSlot(slot)
 
-        const sync = db.get(`${chainId}/validator/${validatorIndex}/sync/${epoch}`)
-        const syncReward = sync?.rewards.find(({slot: syncSlot}) => slot == syncSlot)
-        const syncMissed = sync?.missed.includes(slot)
-        if (syncReward || syncMissed) {
-          const syncs = result.syncs || {...emptyDutyData()}
-          syncs.duties += 1
-          syncs.missed += syncMissed
-          syncs.reward += BigInt(syncReward.reward)
-          syncs.slots.add(slot)
-          result.syncs = syncs
-        }
+      const attestation = db.get(`${chainId}/validator/${validatorIndex}/attestation/${epoch}`)
+      if (attestation?.slot === slot) {
+        const attestations = day.attestations
+        attestations.duties += 1
+        if (!attestation.attested)
+          attestations.missed += 1
+        for (const rewardType of ['head', 'target', 'source', 'inactivity'])
+          attestations.reward += BigInt(attestation.reward[rewardType])
+        attestations.slots.add(slot)
       }
-    }
-    const date = new Date(slotToTime(fromSlot) * 1000)
-    let currentDay = {...emptyDay()}
-    let currentDayKey = date.getUTCDate()
-    let currentMonth = {[currentDayKey]: currentDay}
-    let currentMonthKey = date.getUTCMonth()
-    let currentYear = {[currentMonthKey]: currentMonth}
-    let currentYearKey = date.getUTCFullYear()
-    const perfDetails = {[currentYearKey]: currentYear}
-    for (const [slotOffset, results] of resultsBySlot.entries()) {
-      mergeIntoDay(currentDay, results, fromSlot + slotOffset)
-      date.setMilliseconds(secondsPerSlot * 1000)
-      if (currentDayKey !== date.getUTCDate()) {
-        currentDay = {...emptyDay()}
-        currentDayKey = date.getUTCDate()
-        if (currentMonthKey !== date.getUTCMonth()) {
-          currentMonthKey = date.getUTCMonth()
-          currentMonth = {}
-          if (currentYearKey !== date.getUTCFullYear()) {
-            currentYearKey = date.getUTCFullYear()
-            currentYear = {}
-            perfDetails[currentYearKey] = currentYear
-          }
-          currentYear[currentMonthKey] = currentMonth
-        }
-        currentMonth[currentDayKey] = currentDay
+
+      const proposal = db.get(`${chainId}/validator/${validatorIndex}/proposal/${slot}`)
+      if (proposal) {
+        const proposals = day.proposals
+        proposals.duties += 1
+        if (proposal.missed)
+          proposals.missed += 1
+        proposals.reward += BigInt(proposal.reward)
+        proposals.slots.add(slot)
       }
+
+      const sync = db.get(`${chainId}/validator/${validatorIndex}/sync/${epoch}`)
+      const syncReward = sync?.rewards.find(({slot: syncSlot}) => slot == syncSlot)
+      const syncMissed = sync?.missed.includes(slot)
+      if (syncReward || syncMissed) {
+        const syncs = day.syncs
+        syncs.duties += 1
+        syncs.missed += syncMissed
+        syncs.reward += BigInt(syncReward.reward)
+        syncs.slots.add(slot)
+      }
+
+      slot++
     }
-    Object.values(perfDetails).forEach(year =>
-      Object.values(year).forEach(month =>
-        Object.values(month).forEach(day =>
-          Object.entries(day).forEach(([key, duty]) => {
-            if (key == 'slots') return
-            duty.reward = duty.reward.toString()
-            duty.slots = Array.from(duty.slots).toSorted((a, b) => a - b)
-          }))))
-    socket.emit('perfDetails', perfDetails)
+    Object.entries(day).forEach(([key, duty]) => {
+      if (key == 'slots') return
+      duty.reward = duty.reward.toString()
+      duty.slots = setToRanges(duty.slots)
+    })
+    return callback(day)
   })
 
   socket.on('disconnect', () => {

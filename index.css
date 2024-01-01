@@ -41,6 +41,7 @@ input[type="number"][readonly] {
 }
 ul#entityFailures {
   list-style-type: none;
+  padding-left: 0;
 }
 ul#entityFailures:not(:empty)::before {
   content: 'No RP validators found for:';

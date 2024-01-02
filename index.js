@@ -1,3 +1,4 @@
+// @license magnet:?xt=urn:btih:0b31508aeb0634b347b8270c7bee4d411b5d4109&dn=agpl-3.0.txt AGPL-3.0
 const socket = io()
 const frag = document.createDocumentFragment()
 const body = document.querySelector('body')
@@ -1136,7 +1137,7 @@ codeLink.href = 'https://github.com/xrchz/rocketperf'
 codeLink.innerText = 'site code'
 footerDiv.append(codeLink)
 
-body.append(
+body.replaceChildren(
   titleHeading,
   entryHeading,
   entityEntryBox,
@@ -1220,3 +1221,4 @@ setParamsFromUrl()
 // TODO: look into execution layer rewards too? probably ask for more money to implement that
 // TODO: add free-form text selectors for times too?
 // TODO: add timezone selection?
+// @license-end

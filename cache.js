@@ -41,6 +41,7 @@ const rocketStorage = new ethers.Contract(
 const rocketStorageGenesisBlockByChain = {
   1: 13325233
 }
+const statusStaking = 2n
 const statusDissolved = 4n
 
 const rocketStorageGenesisBlock = rocketStorageGenesisBlockByChain[chainId]
@@ -155,23 +156,27 @@ async function getActivationInfo(validatorIndex) {
     if (!minipoolExists)
       throw new Error(`Validator ${validatorIndex} (${pubkey}) has no corresponding minipool (${minipoolAddress})`)
     const minipool = new ethers.Contract(minipoolAddress, minipoolAbi, provider)
-    if (await minipool.getVacant().catch(revert => false))
-      throw new Error(`Minipool ${minipoolAddress} (validator ${validatorIndex}) is vacant`)
-    const promotions = await minipool.queryFilter('MinipoolPromoted')
-    if (promotions.length) {
-      if (promotions.length !== 1)
-        console.warn(`Unexpectedly many promotions for ${minipoolAddress}: ${promotions.length}`)
-      const entry = promotions[0]
-      const block = await entry.getBlock()
-      const slot = timeToSlot(block.timestamp)
-      log(`Got promotion @ block ${block.number} (${slot}) for ${minipoolAddress} (${validatorIndex})`)
-      activationInfo.promoted = slot
+    if (await minipool.getStatus().then(s => s == statusStaking)) {
+      if (await minipool.getVacant().catch(revert => false))
+        throw new Error(`Minipool ${minipoolAddress} (validator ${validatorIndex}) is vacant`)
+      const promotions = await minipool.queryFilter('MinipoolPromoted')
+      if (promotions.length) {
+        if (promotions.length !== 1)
+          console.warn(`Unexpectedly many promotions for ${minipoolAddress}: ${promotions.length}`)
+        const entry = promotions[0]
+        const block = await entry.getBlock()
+        const slot = timeToSlot(block.timestamp)
+        log(`Got promotion @ block ${block.number} (${slot}) for ${minipoolAddress} (${validatorIndex})`)
+        activationInfo.promoted = slot
+      }
+      else {
+        log(`Recording ${minipoolAddress} (${validatorIndex}) as not a solo migration`)
+        activationInfo.promoted = false
+      }
+      changed = true
     }
-    else {
-      log(`Recording ${minipoolAddress} (${validatorIndex}) as not a solo migration`)
-      activationInfo.promoted = false
-    }
-    changed = true
+    else
+      log(`Skipping setting solo/promotion for ${validatorIndex} whose minipool is not yet staking`)
   }
   if (changed) await db.put(key, activationInfo)
   return activationInfo

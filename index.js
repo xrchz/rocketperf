@@ -168,19 +168,26 @@ titleHeading.innerText = '🚀 RocketPerv 📉'
 entryHeading.innerText = 'Enter Validators'
 perfHeading.innerText = 'Performance of Selected Validators'
 
+const setPerformanceHeadingsLoading = () => {
+  summaryHeading.innerText = 'Loading Summary...'
+  detailsHeading.innerText = 'Loading Details...'
+}
+
 const setHeadingsLoading = () => {
   selectedHeading.innerText = 'Loading Validators...'
   slotsHeading.innerText = 'Loading Slots Range...'
-  summaryHeading.innerText = 'Loading Summary...'
-  detailsHeading.innerText = 'Loading Details...'
+  setPerformanceHeadingsLoading()
 }
 
 const updateSlotsHeading = () =>
   slotsHeading.innerText = 'Time Range (UTC)'
 
+const updateSummaryHeading = () => summaryHeading.innerText = 'Summary'
+const updateDetailsHeading = () => detailsHeading.innerText = 'Details'
+
 const updatePerformanceHeadings = () => {
-  summaryHeading.innerText = 'Summary'
-  detailsHeading.innerText = 'Details'
+  updateSummaryHeading()
+  updateDetailsHeading()
 }
 
 function updateSelectedHeading(n1) {
@@ -430,10 +437,6 @@ limitToDateLabel.append(
 limitToTimeLabel.append(limitToTime)
 
 const thisUrl = new URL(window.location)
-
-const minipoolsInTable = () => Array.from(
-  minipoolsList.querySelectorAll('td.minipool > a')
-).flatMap(a => isIncluded(a) ? [a.href.slice(-42)] : [])
 
 const validatorIndicesInTable = () => Array.from(
   minipoolsList.querySelectorAll('td.validator > a')
@@ -690,6 +693,7 @@ const updatePerformanceDetails = async () => {
     if (unfilledFrom <= toValue) collectDayData(unfilledFrom, toValue)
     resolveRender(renderCalendar(data))
     await Promise.all(daysFilled)
+    updateDetailsHeading()
     const allSummaryTotals = {...emptyDutyData()}
     Object.values(totals).forEach(d => addTotal(allSummaryTotals, d))
     for (const h of summaryHeadings) {
@@ -703,6 +707,7 @@ const updatePerformanceDetails = async () => {
       }
     }
     summaryDiv.classList[allSummaryTotals.duties ? 'remove' : 'add']('hidden')
+    updateSummaryHeading()
   }
   else console.warn(`Skipping getting details for invalid slot range ${fromValue} - ${toValue}`)
 }
@@ -790,8 +795,8 @@ async function updateSlotRange() {
     }
     window.history.pushState(null, '', thisUrl)
     delete slotRangeLimits.validatorsChanged
+    setPerformanceHeadingsLoading()
     await updatePerformanceDetails()
-    updatePerformanceHeadings()
   }
   else {
     console.log(`Unchanged (ignored): ${fromOld} - ${toOld} to ${fromNew} - ${toNew}`)
@@ -1080,10 +1085,11 @@ socket.on('minipools', async minipools => {
   if (minipools.length) {
     minipoolsList.classList.remove('hidden')
     slotRangeLimits.validatorsChanged = minipools.length + 1
+    const promise = new Promise(resolve => waitingForSlotRangeLimits.push(resolve))
     socket.volatile.emit('slotRangeLimits',
       minipools.map(({validatorIndex}) => validatorIndex)
     )
-    await new Promise(resolve => waitingForSlotRangeLimits.push(resolve))
+    await promise
   }
   else {
     updateSelectedHeading()
@@ -1155,6 +1161,9 @@ slotRangeLimitsDiv.querySelectorAll('input').forEach(
 async function setParamsFromUrl() {
   thisUrl.href = window.location
 
+  if (!thisUrl.searchParams.size) return
+  setHeadingsLoading()
+
   console.log(`Setting params from ${thisUrl.searchParams}`)
   const slotsToSet = [fromSlot, toSlot].map(input => (
     {input, slot: thisUrl.searchParams.get(`${input.dataset.dir[0]}`)}
@@ -1169,6 +1178,7 @@ async function setParamsFromUrl() {
     entityEntryBox.value = urlValidators.join('\n')
     entityEntryBox.dispatchEvent(new Event('change'))
   }
+  else updateSelectedHeading(validatorIndicesInTable().length + 1)
 
   await promise
 
@@ -1180,7 +1190,12 @@ async function setParamsFromUrl() {
       promise = true
     }
   })
-  if (promise) await updateSlotRange()
+  if (promise)
+    await updateSlotRange()
+  else {
+    updateSlotsHeading()
+    updatePerformanceHeadings()
+  }
 }
 
 window.addEventListener('popstate', setParamsFromUrl, {passive: true})

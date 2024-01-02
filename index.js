@@ -166,11 +166,36 @@ const detailsHeading = document.createElement('h3')
 
 titleHeading.innerText = '🚀 RocketPerv 📉'
 entryHeading.innerText = 'Enter Validators'
-selectedHeading.innerText = 'Selected Validators'
 perfHeading.innerText = 'Performance of Selected Validators'
-slotsHeading.innerText = 'Time Range (UTC)'
-summaryHeading.innerText = 'Summary'
-detailsHeading.innerText = 'Details'
+
+const setHeadingsLoading = () => {
+  selectedHeading.innerText = 'Loading Validators...'
+  slotsHeading.innerText = 'Loading Slots Range...'
+  summaryHeading.innerText = 'Loading Summary...'
+  detailsHeading.innerText = 'Loading Details...'
+}
+
+const updateSlotsHeading = () =>
+  slotsHeading.innerText = 'Time Range (UTC)'
+
+const updatePerformanceHeadings = () => {
+  summaryHeading.innerText = 'Summary'
+  detailsHeading.innerText = 'Details'
+}
+
+function updateSelectedHeading(n1) {
+  const n = n1 - 1
+  if (n) {
+    const s = n > 1 ? 's' : ''
+    selectedHeading.innerText = `${n} Selected Validator${s}`
+  }
+  else
+    selectedHeading.innerText = 'Selected Validators'
+}
+
+updateSlotsHeading()
+updatePerformanceHeadings()
+updateSelectedHeading()
 
 const entityEntryBox = document.createElement('textarea')
 entityEntryBox.placeholder = 'Node, minipool, or withdrawal addresses/ENS names,'.concat(
@@ -184,7 +209,7 @@ entityEntryBox.autocomplete = 'on'
 
 entityEntryBox.addEventListener('change',
   () => {
-    selectedHeading.innerText = 'Loading Selected Validators...'
+    setHeadingsLoading()
     socket.emit('entities', entityEntryBox.value)
   },
   {passive: true}
@@ -697,7 +722,6 @@ const waitingForMinipools = []
 const waitingForSlotRangeLimits = []
 
 async function updateSlotRange() {
-
   if (waitingForMinipools.length) {
     console.log(`Skipping updateSlotRange because there are updates waiting for validator changes`)
     return
@@ -735,6 +759,8 @@ async function updateSlotRange() {
 
   const rangeChanged = fromNew != fromOld || toNew != toOld
 
+  updateSlotsHeading()
+
   if (rangeChanged || slotRangeLimits.validatorsChanged) {
     if (rangeChanged) {
       console.log(`Updating ${fromOld} - ${toOld} to ${fromNew} - ${toNew}`)
@@ -765,9 +791,11 @@ async function updateSlotRange() {
     window.history.pushState(null, '', thisUrl)
     delete slotRangeLimits.validatorsChanged
     await updatePerformanceDetails()
+    updatePerformanceHeadings()
   }
   else {
     console.log(`Unchanged (ignored): ${fromOld} - ${toOld} to ${fromNew} - ${toNew}`)
+    updatePerformanceHeadings()
   }
 }
 
@@ -999,6 +1027,7 @@ const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'Jul
 const changeSelectedBoxes = () => {
   const indices = validatorIndicesInTable()
   slotRangeLimits.validatorsChanged = indices.length + 1
+  setHeadingsLoading()
   socket.volatile.emit('slotRangeLimits', indices)
 }
 
@@ -1064,16 +1093,6 @@ socket.on('minipools', async minipools => {
     waitingForMinipools.shift()()
 })
 
-
-function updateSelectedHeading(n1) {
-  const n = n1 - 1
-  if (n) {
-    const s = n > 1 ? 's' : ''
-    selectedHeading.innerText = `${n} Selected Validator${s}`
-  }
-  else
-    selectedHeading.innerText = 'Selected Validators'
-}
 
 socket.on('slotRangeLimits', ({min, max}) => {
   updateSelectedHeading(slotRangeLimits.validatorsChanged)

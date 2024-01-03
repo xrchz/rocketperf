@@ -1,5 +1,5 @@
 import { parentPort } from 'node:worker_threads'
-import { db, log, chainId, slotsPerEpoch, epochOfSlot, beaconRpcUrl } from './lib.js'
+import { db, log, chainId, slotsPerEpoch, epochOfSlot, beaconRpcUrl, arrayMin, arrayMax } from './lib.js'
 
 function hexStringToBitvector(s) {
   const bitlist = []
@@ -54,6 +54,13 @@ async function getAttestationDuties(epoch, validatorIds) {
 
   if (!running) return
 
+  const logAddedSet = new Set()
+  const logAddedList = []
+  const logAdded = (index, slot) => {
+    logAddedSet.add(index)
+    logAddedList.push(slot)
+  }
+
   const committees = await fetch(attestationDutiesUrl).then(async res => {
     if (res.status !== 200)
       throw new Error(`Got ${res.status} fetching attestation duties for ${epoch}: ${await res.text()}`)
@@ -68,7 +75,8 @@ async function getAttestationDuties(epoch, validatorIds) {
         const attestationKey = `${chainId}/validator/${selectedIndex}/attestation/${epoch}`
         const attestation = db.get(attestationKey) || {}
         if (!('position' in attestation)) {
-          log(`Adding attestation duty @ ${slot} for validator ${selectedIndex}`)
+          // log(`Adding attestation duty @ ${slot} for validator ${selectedIndex}`)
+          logAdded(selectedIndex, slot)
           attestation.slot = parseInt(slot)
           attestation.index = parseInt(index)
           attestation.position = position
@@ -77,6 +85,10 @@ async function getAttestationDuties(epoch, validatorIds) {
       }
     }
   }
+
+  if (logAddedList.length != logAddedSet.size)
+    throw new Error(`Unexpected difference in logAdded: ${logAddedList.length} vs ${logAddedSet.size}`)
+  log(`Added ${logAddedSet.size} attestation duties in epoch ${epoch} between ${arrayMin(logAddedList.slice())} and ${arrayMax(logAddedList)}`)
 }
 
 async function processEpoch(epoch, validatorIds) {

@@ -8,6 +8,20 @@ const timestamp = () => Intl.DateTimeFormat(
 
 export const log = s => console.log(`${timestamp()} ${s}`)
 
+const MAX_ARGS = 10000
+
+export const arrayMin = (a) => {
+  let min = Infinity
+  while (a.length) min = Math.min(min, ...a.splice(0, MAX_ARGS))
+  return min
+}
+
+export const arrayMax = (a) => {
+  let max = 0
+  while (a.length) max = Math.max(max, ...a.splice(0, MAX_ARGS))
+  return max
+}
+
 export const nullAddress = '0x'.padEnd(42, '0')
 
 export const provider = new ethers.JsonRpcProvider(process.env.RPC)

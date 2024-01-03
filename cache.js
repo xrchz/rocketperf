@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { ethers } from 'ethers'
 import { db, provider, chainId, beaconRpcUrl, log, multicall, secondsPerSlot,
-         timeSlotConvs, slotsPerEpoch, epochOfSlot, minipoolAbi,
+         timeSlotConvs, slotsPerEpoch, epochOfSlot, minipoolAbi, arrayMin,
          minipoolsByPubkeyCount, minipoolsByPubkey, minipoolCount,
          updateMinipoolCount, incrementMinipoolsByPubkeyCount, getIndexFromPubkey,
          getMinipoolByPubkey, getFinalizedSlot, getPubkeyFromIndex,
@@ -11,16 +11,9 @@ import { Worker } from 'node:worker_threads'
 const {timeToSlot, slotToTime} = timeSlotConvs(chainId)
 
 const MAX_QUERY_RANGE = 1000
-const MAX_ARGS = 10000
 const MAX_BEACON_RANGE = 100
 
 let running = true
-
-const arrayMin = (a) => {
-  let min = Infinity
-  while (a.length) min = Math.min(min, ...a.splice(0, MAX_ARGS))
-  return min
-}
 
 const arrayPromises = async (a, max, logger) => {
   log(`Processing ${a.length} promises ${max} at a time`)
@@ -214,7 +207,7 @@ workers.forEach((data, i) => {
       data.resolveWhenReady(i)
   })
   data.worker.once('error', (e) => {
-    console.error(`Error in worker ${worker.threadId}, exiting...`)
+    console.error(`Error in worker ${data.worker.threadId}, exiting...`)
     console.error(e)
     process.exit(1)
   })
@@ -267,7 +260,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
           }
         }
         if (updated.length)
-          log(`Updated ${uptoKey} to ${epoch} for ${updated}`)
+          log(`Updated ${uptoKey} to ${epoch} for ${updated.length} validators from ${updated.at(0)} to ${updated.at(-1)}`)
       }
     })
     worker.postMessage({epoch, validatorIds, dutiesOnly})

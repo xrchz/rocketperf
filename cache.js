@@ -259,6 +259,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
       if (epochIndex == 0) {
         const updated = []
         for (const validatorIndex of validatorIds.keys()) {
+          if (!running) break
           const nextEpochKey = `${chainId}/validator/${validatorIndex}/${uptoKey}`
           if ((db.get(nextEpochKey) || 0) < epoch) {
             updated.push(validatorIndex)

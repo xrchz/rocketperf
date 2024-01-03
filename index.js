@@ -474,13 +474,26 @@ async function cacheRetrieve(indices, minSlot, maxSlot, missHandler) {
   db.transaction('lru', 'readwrite').objectStore('lru').put(
     {key, time: Math.round(new Date().getTime() / 1000)}
   )
-  if (v) return v
-  const computed = await missHandler()
-  await new Promise(resolve =>
-    db.transaction('', 'readwrite').objectStore('').add(computed, key)
-    .addEventListener('success', resolve, {passive: true})
-  )
+  if (v) {
+    console.log(`cache hit for ${minSlot} - ${maxSlot}`)
+    return v
+  }
+  const computed = await missHandler().catch(e => {
+    console.warn(`Error ${JSON.stringify(e)} handling miss for ${minSlot} - ${maxSlot}, skipping...`)
+    throw e
+  })
+  await new Promise(resolve => {
+    const req = db.transaction('', 'readwrite').objectStore('').add(computed, key)
+    req.addEventListener('success', resolve, {passive: true})
+    req.addEventListener('error', () => {
+      const e = req.error
+      console.warn(`${e.name} caching computed value for ${minSlot} - ${maxSlot}: ${e.message}; skipping...`)
+      resolve(e)
+    }, {passive: true})
+  })
+  console.log(`cached computed value for ${minSlot} - ${maxSlot}`)
   navigator.storage.estimate().then(({quota, usage}) => {
+    console.log(`Current storage: ${usage} usage / ${quota} quota`)
     if (usage / quota > EVICTION_THRESHOLD) { // TODO: do multiple evictions if still over?
       db.transaction('lru').objectStore('lru').index('').openCursor().addEventListener(
         'success', (e) => e.target.result.delete(), {passive: true}
@@ -491,6 +504,7 @@ async function cacheRetrieve(indices, minSlot, maxSlot, missHandler) {
 }
 
 function renderCalendar(data) {
+  console.log(`Rendering calendar...`)
   const calFrag = document.createDocumentFragment()
   for (const year of Object.keys(data).map(k => parseInt(k))) {
     const yearContainer = calFrag.appendChild(document.createElement('div'))
@@ -550,31 +564,40 @@ const mergeIntoDay = (day, r) => Object.entries(day).forEach(
 
 async function validatorPerformance(validatorIndex, fromSlot, toSlot) {
   async function missHandler() {
+    console.log(`cache miss for ${validatorIndex} ${fromSlot} - ${toSlot}`)
     let min = fromSlot
-    let max
+    const nextMax = () => Math.min(toSlot, min + MAX_SLOT_QUERY_RANGE - 1)
+    let max = nextMax()
+    const callServer = (resolve, reject) => {
+      socket.emit('validatorPerformance', validatorIndex, min, max,
+        (v) => {
+          if ('error' in v) return reject(v.error)
+          Object.entries(v).forEach(([key, duty]) => {
+            if (key == 'slots') return
+            duty.reward = BigInt(duty.reward)
+            duty.slots = rangesToSet(duty.slots)
+          })
+          resolve(v)
+        }
+      )
+    }
+    if (min == fromSlot && max == toSlot)
+      return await new Promise(callServer)
     const result = {...emptyDay()}
     while (min <= toSlot) {
-      max = Math.min(toSlot, min + MAX_SLOT_QUERY_RANGE - 1)
       const chunkKey = `${min}-${max}`
+      console.log(`Checking cache for ${validatorIndex} ${chunkKey}...`)
       const chunk = await cacheRetrieve([validatorIndex], min, max,
         () => new Promise(
           (resolve, reject) => {
-            socket.emit('validatorPerformance', validatorIndex, min, max,
-              (v) => {
-                if ('error' in v) return reject(v.error)
-                Object.entries(v).forEach(([key, duty]) => {
-                  if (key == 'slots') return
-                  duty.reward = BigInt(duty.reward)
-                  duty.slots = rangesToSet(duty.slots)
-                })
-                resolve(v)
-              }
-            )
+            console.log(`cache miss for ${validatorIndex} ${chunkKey}`)
+            callServer(resolve, reject)
           }
         )
       )
       mergeIntoDay(result, chunk)
       min = max + 1
+      max = nextMax()
     }
     return result
   }
@@ -584,6 +607,7 @@ async function validatorPerformance(validatorIndex, fromSlot, toSlot) {
 const updatePerformanceDetails = async () => {
   const fromValue = parseInt(fromSlot.value)
   const toValue = parseInt(toSlot.value)
+  console.log(`Updating performance details for ${fromValue} - ${toValue}`)
   if (0 <= fromValue && fromValue <= toValue) {
     const indices = validatorIndicesInTable().map(i => parseInt(i))
     indices.sort(compareNumbers)
@@ -597,6 +621,7 @@ const updatePerformanceDetails = async () => {
     let resolveRender
     const waitForRender = new Promise(resolve => resolveRender = resolve)
     async function fillDay(dayObj, dateKey) {
+      console.log(`Filling ${dateKey}...`)
       addTotals(dayObj)
       const day = dateKey.split('-').at(-1)
       await waitForRender
@@ -612,7 +637,7 @@ const updatePerformanceDetails = async () => {
         (totalMissed ? Math.round(performance * 10) * 10 : 'all')
         : 'nil'
       dayDiv.classList.add(`perf${performanceDecile}`)
-      const dayObjKeys = Object.keys(dayObj).slice(0, -1)
+      const dayObjKeys = Object.keys(dayObj).filter(k => k != 'slots')
       const proposalSlots = (key, slots) => key === 'proposals' ? ` (${Array.from(slots).join(',')})` : ''
       const dutyLine = (key, {duties, missed, reward, slots}) =>
         `${duties - missed}/${duties}${proposalSlots(key, slots)}: ${formatGwei(reward)} gwei`
@@ -648,6 +673,7 @@ const updatePerformanceDetails = async () => {
       daysFilled.push(
         new Promise(async resolve => {
           async function missHandler() {
+            console.log(`cache miss for ${min} - ${max}...`)
             const getValidatorPerformance = indices.map(validatorIndex => async () => {
               const validatorDayObj = await validatorPerformance(
                 validatorIndex, min, max
@@ -659,14 +685,16 @@ const updatePerformanceDetails = async () => {
               mergeIntoDay(dayToFill, validatorDayObj)
             })
             while (getValidatorPerformance.length) {
+              console.log(`${getValidatorPerformance.length} indices left on ${min} - ${max}`)
               const chunk = getValidatorPerformance.splice(0, MAX_CONCURRENT_VALIDATORS)
               await Promise.all(chunk.map(f => f()))
+              console.log(`got performance for ${chunk.length} validators for ${min} - ${max}`)
             }
             return dayToFill
           }
+          console.log(`checking cache for ${min} - ${max}...`)
           const dayObj = await cacheRetrieve(indices, min, max, missHandler)
-          if (dayObj !== dayToFill)
-            Object.entries(dayObj).forEach(([k, v]) => dayToFill[k] = v)
+          if (dayObj !== dayToFill) Object.assign(dayToFill, dayObj)
           return resolve(await fillDay(dayToFill, dateKey))
         })
       )
@@ -693,8 +721,10 @@ const updatePerformanceDetails = async () => {
     }
     if (unfilledFrom <= toValue) collectDayData(unfilledFrom, toValue)
     resolveRender(renderCalendar(data))
+    console.log(`Filling days with data...`)
     await Promise.all(daysFilled)
     updateDetailsHeading()
+    console.log(`Filling summary totals...`)
     const allSummaryTotals = {...emptyDutyData()}
     Object.values(totals).forEach(d => addTotal(allSummaryTotals, d))
     for (const h of summaryHeadings) {
@@ -1210,6 +1240,7 @@ setParamsFromUrl()
 // TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?
 // TODO: server sends "update minimum/maximum slot" messages whenever finalized increases?
 // TODO: add NO portion of rewards separately from validator rewards? (need to track commission and borrow)
+// TODO: add dev indexeddb explorer + editor
 // TODO: check (and handle) URL length limit? e.g. store on server for socketid (with ttl) when too long
 // TODO: add volatility delay before responding to user input changes to selected minipools or slots (for checkboxes, spinners, sliders only)?
 // TODO: add copy for whole table?
@@ -1221,4 +1252,5 @@ setParamsFromUrl()
 // TODO: look into execution layer rewards too? probably ask for more money to implement that
 // TODO: add free-form text selectors for times too?
 // TODO: add timezone selection?
+// TODO: animate ellipses in loading headings? add other indications of out-of-date data?
 // @license-end

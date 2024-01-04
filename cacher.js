@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import { fetch, setGlobalDispatcher, Agent } from 'undici'
 import { ethers } from 'ethers'
 import { db, provider, chainId, beaconRpcUrl, log, multicall, secondsPerSlot,
          timeSlotConvs, slotsPerEpoch, epochOfSlot, minipoolAbi, arrayMin, arrayMax,
@@ -8,6 +9,8 @@ import { db, provider, chainId, beaconRpcUrl, log, multicall, secondsPerSlot,
          rocketMinipoolManager, FAR_FUTURE_EPOCH, epochFromActivationInfo
        } from './lib.js'
 const {timeToSlot, slotToTime} = timeSlotConvs(chainId)
+
+setGlobalDispatcher(new Agent({ connect: { timeout: 60e3 } }) )
 
 const MAX_QUERY_RANGE = 1000
 const MAX_BEACON_RANGE = 100

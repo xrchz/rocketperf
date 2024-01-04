@@ -449,7 +449,7 @@ const validatorIndicesInTable = () => Array.from(
 // lru object store ('lru')
 // keyPath 'key', with values the same as the above keys
 // additional property 'time': the time of last access of the above key
-const cacheDBPromise = new Promise((resolve, reject) => {
+const openCacheDB = () => new Promise((resolve, reject) => {
   const req = window.indexedDB.open('cache')
   req.addEventListener('success', () => resolve(req.result), {passive: true})
   req.addEventListener('error', () => reject(req.error), {passive: true})
@@ -462,8 +462,7 @@ const cacheDBPromise = new Promise((resolve, reject) => {
 
 const EVICTION_THRESHOLD = 0.8
 
-async function cacheRetrieve(indices, minSlot, maxSlot, missHandler) {
-  const db = await cacheDBPromise
+async function cacheRetrieve(db, indices, minSlot, maxSlot, missHandler) {
   const tx = db.transaction('', 'readonly', {durability: 'relaxed'})
   const os = tx.objectStore('')
   const key = [indices, [minSlot, maxSlot]]
@@ -562,7 +561,7 @@ const mergeIntoDay = (day, r) => Object.entries(day).forEach(
   ([k, duty]) => k != 'slots' && k in r && mergeIntoDuty(duty, r[k])
 )
 
-async function validatorPerformance(validatorIndex, fromSlot, toSlot) {
+async function validatorPerformance(db, validatorIndex, fromSlot, toSlot) {
   async function missHandler() {
     console.log(`cache miss for ${validatorIndex} ${fromSlot} - ${toSlot}`)
     let min = fromSlot
@@ -587,7 +586,7 @@ async function validatorPerformance(validatorIndex, fromSlot, toSlot) {
     while (min <= toSlot) {
       const chunkKey = `${min}-${max}`
       console.log(`Checking cache for ${validatorIndex} ${chunkKey}...`)
-      const chunk = await cacheRetrieve([validatorIndex], min, max,
+      const chunk = await cacheRetrieve(db, [validatorIndex], min, max,
         () => new Promise(
           (resolve, reject) => {
             console.log(`cache miss for ${validatorIndex} ${chunkKey}`)
@@ -601,7 +600,7 @@ async function validatorPerformance(validatorIndex, fromSlot, toSlot) {
     }
     return result
   }
-  return await cacheRetrieve([validatorIndex], fromSlot, toSlot, missHandler)
+  return await cacheRetrieve(db, [validatorIndex], fromSlot, toSlot, missHandler)
 }
 
 const updatePerformanceDetails = async () => {
@@ -666,6 +665,7 @@ const updatePerformanceDetails = async () => {
     let slot = fromValue
     let unfilledFrom = slot
     const daysFilled = []
+    const db = await openCacheDB()
     const collectDayData = (min, max) => {
       const dateKey = `${currentYearKey}-${currentMonthKey}-${currentDayKey}`
       const dayToFill = currentDay
@@ -676,7 +676,7 @@ const updatePerformanceDetails = async () => {
             console.log(`cache miss for ${min} - ${max}...`)
             const getValidatorPerformance = indices.map(validatorIndex => async () => {
               const validatorDayObj = await validatorPerformance(
-                validatorIndex, min, max
+                db, validatorIndex, min, max
               ).catch((e) => {
                 // TODO: indicate error on page?
                 console.warn(`error getting ${validatorIndex} ${min}-${max}: ${JSON.stringify(e)}`)
@@ -693,7 +693,7 @@ const updatePerformanceDetails = async () => {
             return dayToFill
           }
           console.log(`checking cache for ${min} - ${max}...`)
-          const dayObj = await cacheRetrieve(indices, min, max, missHandler)
+          const dayObj = await cacheRetrieve(db, indices, min, max, missHandler)
           if (dayObj !== dayToFill) Object.assign(dayToFill, dayObj)
           return resolve(await fillDay(dayToFill, dateKey))
         })
@@ -723,6 +723,7 @@ const updatePerformanceDetails = async () => {
     resolveRender(renderCalendar(data))
     console.log(`Filling days with data...`)
     await Promise.all(daysFilled)
+    db.close()
     updateDetailsHeading()
     console.log(`Filling summary totals...`)
     const allSummaryTotals = {...emptyDutyData()}

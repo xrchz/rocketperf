@@ -843,7 +843,7 @@ const timeSelectionHandler = (e) => {
   const type = e.target.type
   const otherType = type === 'time' ? 'date' : 'time'
   const value = e.target.value
-  const other = slotSelectionDiv.querySelector(`input[type="${otherType}"][data-dir="${dir}"]`)
+  const other = slotSelectionDiv.querySelector(`input[type="${otherType}"][data-dir="${dir}"]`).value
   const datestring = type === 'time' ? `${other}T${value}` : `${value}T${other}`
   const time = new Date(datestring).getTime() / 1000
   const slotInput = slotSelectionDiv.querySelector(`input[type="number"][data-dir="${dir}"]`)
@@ -1275,7 +1275,6 @@ setParamsFromUrl()
 
 // TODO: find + fix warnings due to multiple attempts to add the same key to the cache
 // TODO: add dual range slider input for slot selection
-// TODO: fix handling of user changes to date/time inputs
 // TODO: add attestation accuracy and reward info
 // TODO: disable add/sub buttons when they won't work?
 // TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?

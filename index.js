@@ -1169,6 +1169,41 @@ codeLink.href = 'https://github.com/xrchz/rocketperf'
 codeLink.innerText = 'site code'
 footerDiv.append(codeLink)
 
+const devDiv = document.createElement('div')
+
+devDiv.appendChild(document.createElement('h3')).innerText = 'Developer Section'
+const cachedKeysDiv = document.createElement('div')
+const cachedKeysList = document.createElement('ul')
+const getCachedKeysButton = document.createElement('input')
+getCachedKeysButton.type = 'button'
+getCachedKeysButton.value = 'List Keys in Cache'
+const getCachedKeys = async () => {
+  getCachedKeysButton.disabled = true
+  const db = await openCacheDB()
+  const keys = await new Promise((resolve, reject) => {
+    const req = db.transaction('').objectStore('').getAllKeys()
+    req.addEventListener('success', () => resolve(req.result), {passive: true})
+    req.addEventListener('error', () => reject(req.error), {passive: true})
+  })
+  const frag = document.createDocumentFragment()
+  for (const [indices, [minSlot, maxSlot]] of keys) {
+    frag.appendChild(
+      document.createElement('li')
+    ).innerText = `${minSlot}–${maxSlot}: ${indices}`
+  }
+  cachedKeysList.replaceChildren(frag)
+  db.close()
+  getCachedKeysButton.disabled = false
+}
+getCachedKeysButton.addEventListener('click', getCachedKeys, {passive: true})
+cachedKeysDiv.append(
+  getCachedKeysButton,
+  cachedKeysList
+)
+devDiv.append(
+  cachedKeysDiv
+)
+
 body.replaceChildren(
   titleHeading,
   entryHeading,
@@ -1184,7 +1219,8 @@ body.replaceChildren(
   summaryDiv,
   detailsHeading,
   detailsDiv,
-  footerDiv
+  footerDiv,
+  devDiv
 )
 
 slotRangeLimitsDiv.querySelectorAll('input').forEach(
@@ -1235,8 +1271,10 @@ window.addEventListener('popstate', setParamsFromUrl, {passive: true})
 
 setParamsFromUrl()
 
+// TODO: find + fix warnings due to multiple attempts to add the same key to the cache
 // TODO: put selected minipools within its own scroll area (to limit vertical space usage)
 // TODO: add dual range slider input for slot selection
+// TODO: fix handling of user changes to date/time inputs
 // TODO: add attestation accuracy and reward info
 // TODO: disable add/sub buttons when they won't work?
 // TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?

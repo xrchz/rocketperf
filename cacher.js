@@ -148,10 +148,17 @@ async function updateMinipoolPubkeys() {
   }
 }
 
-provider.addListener('block', () => Promise.all([
-  updateWithdrawalAddresses(),
-  updateMinipoolPubkeys()
-]))
+let blockLock
+provider.addListener('block', async () => {
+  if (!blockLock) {
+    blockLock = Promise.all([
+      updateWithdrawalAddresses(),
+      updateMinipoolPubkeys()
+    ])
+    await blockLock
+    blockLock = false
+  }
+})
 
 async function getActivationInfo(validatorIndex) {
   const key = `${chainId}/validator/${validatorIndex}/activationInfo`
@@ -596,6 +603,7 @@ process.on('SIGINT', async () => {
   running = false
   log(`Removing listeners...`)
   await provider.removeAllListeners('block')
+  await blockLock
   log(`Awaiting tasks...`)
   await Promise.allSettled(tasks)
   log(`Closing db...`)

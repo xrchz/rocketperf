@@ -1,6 +1,5 @@
 // @license magnet:?xt=urn:btih:0b31508aeb0634b347b8270c7bee4d411b5d4109&dn=agpl-3.0.txt AGPL-3.0
 const socket = io()
-const frag = document.createDocumentFragment()
 const body = document.querySelector('body')
 
 const stringCollator = new Intl.Collator()
@@ -246,6 +245,7 @@ minipoolsList.appendChild(document.createElement('tr'))
 const sortUp = collator => (a, b) => collator.compare(a.dataset.sortKey, b.dataset.sortKey)
 const sortDown = collator => (a, b) => collator.compare(b.dataset.sortKey, a.dataset.sortKey)
 function sortByColumn(compareFn, headerId) {
+  const frag = document.createDocumentFragment()
   const rows = []
   Array.from(
     minipoolsList.querySelectorAll('tr')
@@ -505,9 +505,9 @@ async function cacheRetrieve(indices, minSlot, maxSlot, missHandler) {
 
 function renderCalendar(data) {
   console.log(`Rendering calendar...`)
-  const calFrag = document.createDocumentFragment()
+  const frag = document.createDocumentFragment()
   for (const year of Object.keys(data).map(k => parseInt(k))) {
-    const yearContainer = calFrag.appendChild(document.createElement('div'))
+    const yearContainer = frag.appendChild(document.createElement('div'))
     yearContainer.classList.add('yearContainer')
     yearContainer.appendChild(document.createElement('span')).innerText = year
     const yearDiv = yearContainer.appendChild(document.createElement('div'))
@@ -535,7 +535,7 @@ function renderCalendar(data) {
       }
     }
   }
-  detailsDiv.replaceChildren(calFrag)
+  detailsDiv.replaceChildren(frag)
 }
 
 const rangesToSet = (a) => {
@@ -1069,6 +1069,7 @@ const changeSelectedBoxes = () => {
 
 socket.on('minipools', async minipools => {
   console.log(`Received ${minipools.length} minipools`)
+  const frag = document.createDocumentFragment()
   for (const {minipoolAddress, minipoolEnsName,
               nodeAddress, nodeEnsName,
               withdrawalAddress, withdrawalEnsName,

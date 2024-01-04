@@ -408,10 +408,12 @@ async function processEpoch(epoch, validatorIds) {
 
     searchSlot++
   }
-  const addedAttestations = logAdded.filter(({attestationEpoch}) => 0 <= attestationEpoch).length
-  log(`Added ${addedAttestations} attestations for ${epoch}`)
-  if (addedAttestations < logAdded.length)
-    log(`Added ${logAdded.length - addedAttestations} sync rewards for ${epoch}`)
+  const addedAttestations = logAdded.filter(x => 'attestationEpoch' in x).length
+  if (addedAttestations) {
+    log(`Added ${addedAttestations} attestations for ${epoch}`)
+    if (addedAttestations < logAdded.length)
+      log(`Added ${logAdded.length - addedAttestations} sync rewards for ${epoch}`)
+  }
 
   if (!running) return
   log(`Getting attestation rewards for ${epoch}`)

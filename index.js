@@ -376,7 +376,7 @@ const limitToSlotButton = document.createElement('input')
 })
 
 const slotRangeLimits = {min: 0, max: Infinity}
-socket.emit('slotRangeLimits', [])
+socket.volatile.emit('slotRangeLimits', [])
 
 const limitFromDateTime = document.createElement('div')
 const limitToDateTime = document.createElement('div')

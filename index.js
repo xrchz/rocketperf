@@ -229,10 +229,12 @@ const isIncluded = (a) =>
   a.parentElement.parentElement
     .querySelector('input[type="checkbox"]').checked
 
-const minipoolsList = document.createElement('table')
-minipoolsList.classList.add('hidden')
+const minipoolsDiv = document.createElement('div')
+minipoolsDiv.classList.add('hidden')
+minipoolsDiv.id = 'minipools'
+const minipoolsTable = minipoolsDiv.appendChild(document.createElement('table'))
 const headings = ['Minipool', 'Node', 'Withdrawal', 'Validator', 'Include']
-minipoolsList.appendChild(document.createElement('tr'))
+minipoolsTable.appendChild(document.createElement('tr'))
   .append(
     ...headings.map(h => {
       const th = document.createElement('th')
@@ -248,23 +250,23 @@ function sortByColumn(compareFn, headerId) {
   const frag = document.createDocumentFragment()
   const rows = []
   Array.from(
-    minipoolsList.querySelectorAll('tr')
+    minipoolsTable.querySelectorAll('tr')
   ).forEach(row =>
     row.classList.contains('head')
     ? frag.appendChild(row)
     : rows.push(row)
   )
-  minipoolsList.replaceChildren(frag)
+  minipoolsTable.replaceChildren(frag)
   rows.forEach(row => {
     const item = row.querySelector(`td[headers~="${headerId}"] > :is(a, input)`)
     row.dataset.sortKey = item.tagName == 'A' ? item.innerText : item.checked.toString()
   })
   rows.sort(compareFn)
   rows.forEach(row => delete row.dataset.sortKey)
-  minipoolsList.append(...rows)
+  minipoolsTable.append(...rows)
 }
 
-minipoolsList.appendChild(document.createElement('tr'))
+minipoolsTable.appendChild(document.createElement('tr'))
   .append(
     ...headings.map((h, i) => {
       const th = document.createElement('th')
@@ -283,7 +285,7 @@ minipoolsList.appendChild(document.createElement('tr'))
         const columnText = Array.from(
           new Set(
             Array.from(
-              minipoolsList.querySelectorAll(`td[headers~="${headerId}"] > a`)
+              minipoolsTable.querySelectorAll(`td[headers~="${headerId}"] > a`)
             ).flatMap(a => isIncluded(a) ? [a.innerText] : [])
           ).values()
         ).join('\n')
@@ -301,7 +303,7 @@ minipoolsList.appendChild(document.createElement('tr'))
         ch.type = 'checkbox'
         ch.addEventListener('change', () => {
           Array.from(
-            minipoolsList.querySelectorAll('input[type="checkbox"]')
+            minipoolsTable.querySelectorAll('input[type="checkbox"]')
           ).forEach(e => e.checked = ch.checked)
           changeSelectedBoxes()
         })
@@ -312,13 +314,13 @@ minipoolsList.appendChild(document.createElement('tr'))
       return th
     })
   )
-Array.from(minipoolsList.children).forEach(
+Array.from(minipoolsTable.children).forEach(
   r => r.classList.add('head')
 )
 
 function updateIncludeAllChecked() {
   const boxes = Array.from(
-    minipoolsList.querySelectorAll('input[type="checkbox"]')
+    minipoolsTable.querySelectorAll('input[type="checkbox"]')
   )
   const checked = boxes.filter(e => e.checked)
   const allChecked = document.getElementById('include-all-checked')
@@ -440,7 +442,7 @@ limitToTimeLabel.append(limitToTime)
 const thisUrl = new URL(window.location)
 
 const validatorIndicesInTable = () => Array.from(
-  minipoolsList.querySelectorAll('td.validator > a')
+  minipoolsTable.querySelectorAll('td.validator > a')
 ).flatMap(a => isIncluded(a) ? [a.innerText] : [])
 
 // main object store ('')
@@ -1110,13 +1112,13 @@ socket.on('minipools', async minipools => {
     valA.parentElement.classList.add('validator')
     sel.parentElement.classList.add('selected')
   }
-  minipoolsList.replaceChildren(
-    ...Array.from(minipoolsList.querySelectorAll('tr.head'))
+  minipoolsTable.replaceChildren(
+    ...Array.from(minipoolsTable.querySelectorAll('tr.head'))
   )
-  minipoolsList.appendChild(frag)
+  minipoolsTable.appendChild(frag)
   updateIncludeAllChecked()
   if (minipools.length) {
-    minipoolsList.classList.remove('hidden')
+    minipoolsDiv.classList.remove('hidden')
     slotRangeLimits.validatorsChanged = minipools.length + 1
     const promise = new Promise(resolve => waitingForSlotRangeLimits.push(resolve))
     socket.volatile.emit('slotRangeLimits',
@@ -1126,7 +1128,7 @@ socket.on('minipools', async minipools => {
   }
   else {
     updateSelectedHeading()
-    minipoolsList.classList.add('hidden')
+    minipoolsDiv.classList.add('hidden')
   }
   while (waitingForMinipools.length)
     waitingForMinipools.shift()()
@@ -1210,7 +1212,7 @@ body.replaceChildren(
   entityEntryBox,
   entityFailures,
   selectedHeading,
-  minipoolsList,
+  minipoolsDiv,
   perfHeading,
   slotsHeading,
   slotRangeLimitsDiv,
@@ -1272,7 +1274,6 @@ window.addEventListener('popstate', setParamsFromUrl, {passive: true})
 setParamsFromUrl()
 
 // TODO: find + fix warnings due to multiple attempts to add the same key to the cache
-// TODO: put selected minipools within its own scroll area (to limit vertical space usage)
 // TODO: add dual range slider input for slot selection
 // TODO: fix handling of user changes to date/time inputs
 // TODO: add attestation accuracy and reward info

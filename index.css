@@ -19,6 +19,10 @@ td.withdrawal { /* todo: ens vs address */
 td.selected {
   text-align: center;
 }
+div#minipools {
+  overflow: auto;
+  max-height: 32em;
+}
 div#summary {
   display: flex;
   flex-direction: column;

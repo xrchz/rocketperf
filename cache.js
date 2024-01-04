@@ -271,7 +271,8 @@ async function getAttestationDuties(epoch, validatorIds) {
 
   if (logAddedList.length != logAddedSet.size)
     throw new Error(`Unexpected difference in logAdded: ${logAddedList.length} vs ${logAddedSet.size}`)
-  log(`Added ${logAddedSet.size} attestation duties in epoch ${epoch} between ${arrayMin(logAddedList.slice())} and ${arrayMax(logAddedList)}`)
+  if (logAddedSet.size)
+    log(`Added ${logAddedSet.size} attestation duties in epoch ${epoch} between ${arrayMin(logAddedList.slice())} and ${arrayMax(logAddedList)}`)
 }
 
 async function processEpoch(epoch, validatorIds) {
@@ -323,6 +324,7 @@ async function processEpoch(epoch, validatorIds) {
       throw new Error(`dutiesEpoch for ${validatorIndex} too low for ${epoch}`)
   })
 
+  const logAdded = []
   let searchSlot = firstSlotInEpoch
   while (running && searchSlot < firstSlotInEpoch + slotsPerEpoch) {
     const blockUrl = new URL(
@@ -349,7 +351,8 @@ async function processEpoch(epoch, validatorIds) {
         if (attestation?.slot == slot && attestation.index == index && !(attestation.attested?.slot <= searchSlot)) {
           if (attestedBits[attestation.position]) {
             attestation.attested = { slot: searchSlot, head: beacon_block_root, source, target }
-            log(`Adding attestation for ${slot} (${attestationEpoch}) for validator ${validatorIndex} @ ${searchSlot}`)
+            // log(`Adding attestation for ${slot} (${attestationEpoch}) for validator ${validatorIndex} @ ${searchSlot}`)
+            logAdded.push({slot: searchSlot, validatorIndex, attestationEpoch})
             await db.put(attestationKey, attestation)
           }
         }
@@ -385,7 +388,8 @@ async function processEpoch(epoch, validatorIds) {
           continue
         }
         if (sync.rewards.every(({slot}) => slot != searchSlot)) {
-          log(`Adding sync reward for ${searchSlot} for validator ${validator_index}: ${reward}`)
+          // log(`Adding sync reward for ${searchSlot} for validator ${validator_index}: ${reward}`)
+          logAdded.push({slot: searchSlot, validatorIndex: validator_index, reward})
           sync.rewards.push({slot: searchSlot, reward})
           await db.put(syncKey, sync)
         }
@@ -394,10 +398,15 @@ async function processEpoch(epoch, validatorIds) {
 
     searchSlot++
   }
+  const addedAttestations = logAdded.filter(({attestationEpoch}) => 0 <= attestationEpoch).length
+  log(`Added ${addedAttestations} attestations for ${epoch}`)
+  if (addedAttestations < logAdded.length)
+    log(`Added ${logAdded.length - addedAttestations} sync rewards for ${epoch}`)
 
   if (!running) return
   log(`Getting attestation rewards for ${epoch}`)
 
+  logAdded.splice(0, Infinity)
   const attestationRewardsUrl = new URL(
     `/eth/v1/beacon/rewards/attestations/${epoch}`,
     beaconRpcUrl
@@ -429,10 +438,12 @@ async function processEpoch(epoch, validatorIds) {
       attestation.ideal = {}
       for (const key of Object.keys(attestation.reward))
         attestation.ideal[key] = ideal[key]
-      log(`Adding attestation reward for epoch ${epoch} for validator ${validator_index}: ${Object.entries(attestation.reward)} / ${Object.entries(attestation.ideal)}`)
+      // log(`Adding attestation reward for epoch ${epoch} for validator ${validator_index}: ${Object.entries(attestation.reward)} / ${Object.entries(attestation.ideal)}`)
+      logAdded.push(validator_index)
       await db.put(attestationKey, attestation)
     }
   }
+  log(`Added ${logAdded.length} attestation rewards for epoch ${epoch}`)
 
   if (!running) return
   log(`Getting proposals for ${epoch}`)

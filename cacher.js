@@ -45,12 +45,33 @@ function hexStringToBitlist(s) {
 
 let running = true
 
+const moreTasksLocked = new Uint8Array(1)
+const moreTasks = []
+
+const filterResolved = (a) => {
+  let i = 0
+  for (const {state, task} of a) {
+    if (!state.resolved)
+      a[i++] = {state, task}
+  }
+  a.length = i
+}
+
 const arrayPromises = async (a, max, logger) => {
-  log(`Processing ${a.length} promises ${max} at a time`)
+  if (logger) log(`Processing ${a.length} promises ${max} at a time`)
   const result = []
   while (running && a.length) {
-    logger(a.length)
-    result.push(...await Promise.all(a.splice(0, max).map(f => f())))
+    if (logger) logger(a.length)
+    const batch = a.splice(0, max).map(f => {
+      const state = {}
+      return {state, task: f().finally(() => state.resolved = true)}
+    })
+    moreTasks.push(...batch)
+    result.push(...await Promise.all(batch.map(({task}) => task)))
+  }
+  if (Atomics.compareExchange(moreTasksLocked, 0, 0, 1) === 0) {
+    filterResolved(moreTasks)
+    Atomics.store(moreTasksLocked, 0, 0)
   }
   return result
 }
@@ -334,6 +355,8 @@ async function processEpoch(epoch, validatorIds) {
       throw new Error(`dutiesEpoch for ${validatorIndex} too low for ${epoch}`)
   })
 
+  const validatorIdsArray = Array.from(validatorIds.keys())
+
   const logAdded = []
   let searchSlot = firstSlotInEpoch
   while (running && searchSlot < firstSlotInEpoch + slotsPerEpoch) {
@@ -355,29 +378,37 @@ async function processEpoch(epoch, validatorIds) {
     for (const {aggregation_bits, data: {slot, index, beacon_block_root, source, target}} of attestations) {
       const attestedBits = hexStringToBitlist(aggregation_bits)
       const attestationEpoch = epochOfSlot(parseInt(slot))
-      for (const validatorIndex of validatorIds.keys()) {
-        const attestationKey = `${chainId}/validator/${validatorIndex}/attestation/${attestationEpoch}`
-        const attestation = db.get(attestationKey)
-        if (attestation?.slot == slot && attestation.index == index && !(attestation.attested?.slot <= searchSlot)) {
-          if (attestedBits[attestation.position]) {
-            attestation.attested = { slot: searchSlot, head: beacon_block_root, source, target }
-            // log(`Adding attestation for ${slot} (${attestationEpoch}) for validator ${validatorIndex} @ ${searchSlot}`)
-            logAdded.push({slot: searchSlot, validatorIndex, attestationEpoch})
-            await db.put(attestationKey, attestation)
+      await arrayPromises(
+        validatorIdsArray.map(validatorIndex => async () => {
+          const attestationKey = `${chainId}/validator/${validatorIndex}/attestation/${attestationEpoch}`
+          const attestation = db.get(attestationKey)
+          if (attestation?.slot == slot && attestation.index == index && !(attestation.attested?.slot <= searchSlot)) {
+            if (attestedBits[attestation.position]) {
+              attestation.attested = { slot: searchSlot, head: beacon_block_root, source, target }
+              // log(`Adding attestation for ${slot} (${attestationEpoch}) for validator ${validatorIndex} @ ${searchSlot}`)
+              logAdded.push({slot: searchSlot, validatorIndex, attestationEpoch})
+              await db.put(attestationKey, attestation)
+            }
           }
-        }
-      }
+        }),
+        MAX_BEACON_RANGE,
+        // (numLeft) => log(`Getting attestations for ${slot} included in ${searchSlot}, ${numLeft} left`)
+      )
     }
     if (blockData.sync_aggregate) {
       const syncBits = hexStringToBitvector(blockData.sync_aggregate.sync_committee_bits)
-      for (const validatorIndex of validatorIds.keys()) {
-        const syncKey = `${chainId}/validator/${validatorIndex}/sync/${epoch}`
-        const sync = db.get(syncKey)
-        if (sync && !syncBits[sync.position] && !sync.missed.includes(searchSlot)) {
-          sync.missed.push(searchSlot)
-          await db.put(syncKey, sync)
-        }
-      }
+      await arrayPromises(
+        validatorIdsArray.map(validatorIndex => async () => {
+          const syncKey = `${chainId}/validator/${validatorIndex}/sync/${epoch}`
+          const sync = db.get(syncKey)
+          if (sync && !syncBits[sync.position] && !sync.missed.includes(searchSlot)) {
+            sync.missed.push(searchSlot)
+            await db.put(syncKey, sync)
+          }
+        }),
+        MAX_BEACON_RANGE,
+        // (numLeft) => log(`Getting sync duties for ${epoch}, ${numLeft} left`)
+      )
 
       const syncRewardsUrl = new URL(
         `/eth/v1/beacon/rewards/sync_committee/${searchSlot}`,
@@ -559,12 +590,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
     })
     while (tasks.length >= NUM_WORKERS) {
       await Promise.race(tasks.map(({task}) => task))
-      let i = 0
-      for (const {state, task} of tasks) {
-        if (!state.resolved)
-          tasks[i++] = {state, task}
-      }
-      tasks.length = i
+      filterResolved(tasks)
     }
   }
 }
@@ -619,6 +645,7 @@ process.on('SIGINT', async () => {
   await blockLock
   log(`Awaiting tasks...`)
   await Promise.allSettled(tasks)
+  await Promise.allSettled(moreTasks)
   log(`Closing db...`)
   await db.close()
   process.exit()

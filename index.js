@@ -997,7 +997,7 @@ for (const {name, slots} of timeIncrements) {
     }
     addButton.addEventListener('click', makeHandler(add), {passive: true})
     subButton.addEventListener('click', makeHandler(sub), {passive: true})
-    return [addButton, subButton]
+    return [subButton, addButton]
   }
   fromButtons.append(...makeAddSub(fromSlot))
   toButtons.append(...makeAddSub(toSlot))

@@ -57,8 +57,22 @@ ul#entityFailures > li {
 ul#entityFailures > li:not(:last-child)::after {
   content: ',';
 }
-div#fullRangeButtons {
+div#fullRangeButtons, div#sliders {
   grid-column-end: span 2;
+}
+div#sliders {
+  min-height: 2em;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+div#sliders > input[type="range"] {
+  width: 100%;
+  position: absolute;
+}
+div#sliders > input[type="range"]:first-child {
+  z-index: 1;
+  height: 0;
 }
 div.rangeButtons, div.dirRangeButtons {
   display: flex;

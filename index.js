@@ -796,6 +796,11 @@ async function updateSlotRange() {
   toSlot.min = fromNew
   toSlot.max = slotRangeLimits.max
 
+  ;[fromSlider, toSlider].forEach(e => {
+    e.min = slotRangeLimits.min
+    e.max = slotRangeLimits.max
+  })
+
   const rangeChanged = fromNew != fromOld || toNew != toOld
 
   updateSlotsHeading()
@@ -805,6 +810,8 @@ async function updateSlotRange() {
       console.log(`Updating ${fromOld} - ${toOld} to ${fromNew} - ${toNew}`)
       fromSlot.value = fromNew
       toSlot.value = toNew
+      fromSlider.value = fromSlot.value
+      toSlider.value = toSlot.value
       fromSlot.dataset.prevValue = fromSlot.value
       toSlot.dataset.prevValue = toSlot.value
       thisUrl.searchParams.set('f', fromNew)
@@ -861,6 +868,32 @@ const timeSelectionHandler = (e) => {
 ;[fromSlot, toSlot].forEach(e =>
   e.addEventListener('change', updateSlotRange, {passive: true})
 )
+
+const slidersDiv = document.createElement('div')
+slidersDiv.id = 'sliders'
+const fromSlider = slidersDiv.appendChild(document.createElement('input'))
+const toSlider = slidersDiv.appendChild(document.createElement('input'))
+;[fromSlider, toSlider].forEach(e => e.type = 'range')
+
+fromSlider.addEventListener('change', () => {
+  const slot = Math.min(parseInt(fromSlider.value), parseInt(toSlider.value))
+  if (slotRangeLimits.min <= slot) {
+    fromSlot.dataset.prevValue = fromSlot.value
+    fromSlot.value = slot
+    updateSlotRange()
+  }
+  else console.warn(`Invalid value for fromSlider: ${fromSlider.value} - ${toSlider.value}`)
+}, {passive: true})
+
+toSlider.addEventListener('change', () => {
+  const slot = Math.max(parseInt(fromSlider.value), parseInt(toSlider.value))
+  if (slot <= slotRangeLimits.max) {
+    toSlot.dataset.prevValue = toSlot.value
+    toSlot.value = slot
+    updateSlotRange()
+  }
+  else console.warn(`Invalid value for toSlider: ${fromSlider.value} - ${toSlider.value}`)
+}, {passive: true})
 
 const rangeButtons = document.createElement('div')
 rangeButtons.id = 'fullRangeButtons'
@@ -978,6 +1011,7 @@ toDateTime.append(toDateLabel, toTimeLabel)
 slotSelectionDiv.append(
   rangeButtons,
   fromButtons, toButtons,
+  slidersDiv,
   fromDateTime, toDateTime,
   fromSlotLabel, toSlotLabel
 )

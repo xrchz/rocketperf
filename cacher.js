@@ -525,7 +525,10 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
     const epochsProcessed = initialTotal - epochsToProcess.length
     const millisecondsPassed = new Date() - initialTime
     const rate = millisecondsPassed/epochsProcessed
-    const rateStr = rate >= 60e3 ? `${(rate/60e3).toFixed(0)}m ${(rate%60e3).toFixed(2)}s` : `${(rate/1000).toFixed(2)}s`
+    const rateMinutes = (rate/60e3).toFixed(0)
+    const rateMillisecondsLeft = rate - (rateMinutes * 60e3)
+    const rateSecondsStr = 0 <= rateMillisecondsLeft ? ` ${(rateMillisecondsLeft/1000).toFixed(2)}s` : ''
+    const rateStr = rate >= 60e3 ? `${rateMinutes}m${rateSecondsStr}` : `${(rate/1000).toFixed(2)}s`
     const timingMsg = epochsProcessed ? `, averaging ${rateStr} per epoch` : ''
     log(`${epochsToProcess.length} epochs left to process ${processMsg}${timingMsg}`)
     const epoch = epochsToProcess.shift()

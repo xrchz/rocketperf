@@ -708,7 +708,7 @@ const updatePerformanceDetails = async () => {
       )
     }
     while (slot++ <= toValue) {
-      date.setMilliseconds(secondsPerSlot * 1000)
+      date.setUTCMilliseconds(secondsPerSlot * 1000)
       if (currentDayKey !== date.getUTCDate()) {
         collectDayData(unfilledFrom, slot-1)
         unfilledFrom = slot
@@ -906,22 +906,22 @@ async function calculateSlotRange(period) {
   fromSlot.value = slotRangeLimits.min
   toSlot.value = slotRangeLimits.max
   if (period === 'year') {
-    date.setMonth(0, 1)
-    date.setHours(0, 0, 0, 0)
+    date.setUTCMonth(0, 1)
+    date.setUTCHours(0, 0, 0, 0)
   }
   else if (period === 'month') {
-    date.setDate(1)
-    date.setHours(0, 0, 0, 0)
+    date.setUTCDate(1)
+    date.setUTCHours(0, 0, 0, 0)
   }
   else if (period === 'week') {
-    date.setDate(date.getDate() - date.getDay())
-    date.setHours(0, 0, 0, 0)
+    date.setUTCDate(date.getUTCDate() - date.getUTCDay())
+    date.setUTCHours(0, 0, 0, 0)
   }
   else if (period === 'today') {
-    date.setHours(0, 0, 0, 0)
+    date.setUTCHours(0, 0, 0, 0)
   }
   else if (period === 'hour') {
-    date.setMinutes(0, 0, 0)
+    date.setUTCMinutes(0, 0, 0)
   }
   if (period !== 'time') {
     const time = date.getTime() / 1000

@@ -73,6 +73,7 @@ div#sliders > input[type="range"] {
 div#sliders > input[type="range"][data-dir="from"] {
   z-index: 1;
   filter: invert() opacity(50%);
+  height: 20%;
 }
 div.rangeButtons, div.dirRangeButtons {
   display: flex;

@@ -645,7 +645,7 @@ const updatePerformanceDetails = async () => {
         : 'nil'
       dayDiv.classList.add(`perf${performanceDecile}`)
       const dayObjKeys = Object.keys(dayObj).filter(k => k != 'slots')
-      const proposalSlots = (key, slots) => key === 'proposals' ? ` (${Array.from(slots).join(',')})` : ''
+      const proposalSlots = (key, slots) => key === 'proposals' ? ` (${Array.from(slots).toSorted(compareNumbers).join(',')})` : ''
       const dutyLine = (key, {duties, missed, reward, slots}) =>
         `${duties - missed}/${duties}${proposalSlots(key, slots)}: ${formatGwei(reward)} gwei`
       const dutyTitle = (key) => (
@@ -1205,9 +1205,9 @@ codeLink.href = 'https://github.com/xrchz/rocketperf'
 codeLink.innerText = 'site code'
 footerDiv.append(codeLink)
 
-const devDiv = document.createElement('div')
+const devDiv = document.createElement('section')
 
-devDiv.appendChild(document.createElement('h3')).innerText = 'Developer Section'
+devDiv.appendChild(document.createElement('h1')).innerText = 'Developer Section'
 const cachedKeysDiv = document.createElement('div')
 const cachedKeysList = document.createElement('ul')
 const getCachedKeysButton = document.createElement('input')

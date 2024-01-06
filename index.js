@@ -393,6 +393,12 @@ slotRangeLimitsDiv.append(
   limitFromSlotDiv, limitToSlotDiv
 )
 
+const slidersDiv = document.createElement('div')
+slidersDiv.id = 'sliders'
+const fromSlider = slidersDiv.appendChild(document.createElement('input'))
+const toSlider = slidersDiv.appendChild(document.createElement('input'))
+;[fromSlider, toSlider].forEach(e => e.type = 'range')
+
 ;[fromDate, toDate, limitFromDate, limitToDate].forEach(e => e.type = 'date')
 ;[fromTime, toTime, limitFromTime, limitToTime].forEach(e => {
   e.type = 'time'
@@ -400,8 +406,8 @@ slotRangeLimitsDiv.append(
 })
 ;[fromSlot, toSlot, limitFromSlot, limitToSlot].forEach(e => e.type = 'number')
 ;[fromSlot, toSlot].forEach(e => e.dataset.prevValue = e.value)
-;[fromDate, fromTime, fromSlot, limitFromDate, limitFromTime, limitFromSlot].forEach(e => e.dataset.dir = 'from')
-;[toDate, toTime, toSlot, limitToDate, limitToTime, limitToSlot].forEach(e => e.dataset.dir = 'to')
+;[fromDate, fromTime, fromSlot, limitFromDate, limitFromTime, limitFromSlot, fromSlider].forEach(e => e.dataset.dir = 'from')
+;[toDate, toTime, toSlot, limitToDate, limitToTime, limitToSlot, toSlider].forEach(e => e.dataset.dir = 'to')
 fromSlotLabel.append(
   document.createTextNode('From slot: '),
   fromSlot
@@ -869,12 +875,6 @@ const timeSelectionHandler = (e) => {
   e.addEventListener('change', updateSlotRange, {passive: true})
 )
 
-const slidersDiv = document.createElement('div')
-slidersDiv.id = 'sliders'
-const fromSlider = slidersDiv.appendChild(document.createElement('input'))
-const toSlider = slidersDiv.appendChild(document.createElement('input'))
-;[fromSlider, toSlider].forEach(e => e.type = 'range')
-
 fromSlider.addEventListener('change', () => {
   const slot = Math.min(parseInt(fromSlider.value), parseInt(toSlider.value))
   if (slotRangeLimits.min <= slot) {
@@ -1308,9 +1308,10 @@ window.addEventListener('popstate', setParamsFromUrl, {passive: true})
 setParamsFromUrl()
 
 // TODO: find + fix warnings due to multiple attempts to add the same key to the cache
-// TODO: add dual range slider input for slot selection
 // TODO: add attestation accuracy and reward info
 // TODO: disable add/sub buttons when they won't work?
+// TODO: show tooltip + more details when clicking a day (e.g. proposers) - also, makes tooltips more visible on mobile
+// TODO: speed up loading validators (server-side caching?)
 // TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?
 // TODO: server sends "update minimum/maximum slot" messages whenever finalized increases?
 // TODO: add NO portion of rewards separately from validator rewards? (need to track commission and borrow)

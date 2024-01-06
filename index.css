@@ -70,9 +70,9 @@ div#sliders > input[type="range"] {
   width: 100%;
   position: absolute;
 }
-div#sliders > input[type="range"]:first-child {
+div#sliders > input[type="range"][data-dir="from"] {
   z-index: 1;
-  height: 0;
+  filter: invert() opacity(50%);
 }
 div.rangeButtons, div.dirRangeButtons {
   display: flex;

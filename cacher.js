@@ -15,6 +15,9 @@ setGlobalDispatcher(new Agent({ connect: { timeout: 60e3 } }) )
 const MAX_QUERY_RANGE = 1000
 const MAX_BEACON_RANGE = 100
 
+const NUM_EPOCH_TASKS = parseInt(process.env.NUM_EPOCH_TASKS) || 32
+const NUM_INDEX_TASKS = parseInt(process.env.NUM_INDEX_TASKS) || 512
+
 function hexStringToBitvector(s) {
   const bitlist = []
   let hexDigits = s.substring(2)
@@ -249,8 +252,6 @@ const rewardsOptionsForEpoch = (validatorIds) => ({
 
 let processedMinipoolCount = 0
 
-const NUM_WORKERS = parseInt(process.env.NUM_WORKERS) || 2
-
 async function getAttestationDuties(epoch, validatorIds) {
   log(`Getting attestation duties for ${epoch}`)
 
@@ -391,7 +392,7 @@ async function processEpoch(epoch, validatorIds) {
             }
           }
         }),
-        MAX_BEACON_RANGE,
+        NUM_INDEX_TASKS,
         // (numLeft) => log(`Getting attestations for ${slot} included in ${searchSlot}, ${numLeft} left`)
       )
     }
@@ -406,7 +407,7 @@ async function processEpoch(epoch, validatorIds) {
             await db.put(syncKey, sync)
           }
         }),
-        MAX_BEACON_RANGE,
+        NUM_INDEX_TASKS,
         // (numLeft) => log(`Getting sync duties for ${epoch}, ${numLeft} left`)
       )
 
@@ -588,7 +589,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
     tasks.push({
       state, task: fn(epoch, validatorIds).then(onCompletion)
     })
-    while (tasks.length >= NUM_WORKERS) {
+    while (tasks.length >= NUM_EPOCH_TASKS) {
       await Promise.race(tasks.map(({task}) => task))
       filterResolved(tasks)
     }

@@ -13,9 +13,6 @@ td.address {
 td.validator {
   text-align: right;
 }
-td.withdrawal { /* todo: ens vs address */
-  text-align: center;
-}
 td.selected {
   text-align: center;
 }

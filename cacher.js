@@ -3,6 +3,7 @@ import { fetch, setGlobalDispatcher, Agent } from 'undici'
 import { ethers } from 'ethers'
 import { db, provider, chainId, beaconRpcUrl, log, multicall, secondsPerSlot,
          timeSlotConvs, slotsPerEpoch, epochOfSlot, minipoolAbi, arrayMin, arrayMax,
+         finishMoreTasks, arrayPromises, interruptArrayPromises, filterResolved,
          minipoolsByPubkeyCount, minipoolsByPubkey, minipoolCount,
          updateMinipoolCount, incrementMinipoolsByPubkeyCount, getIndexFromPubkey,
          getMinipoolByPubkey, getFinalizedSlot, getPubkeyFromIndex,
@@ -47,37 +48,6 @@ function hexStringToBitlist(s) {
 }
 
 let running = true
-
-const moreTasksLocked = new Uint8Array(1)
-const moreTasks = []
-
-const filterResolved = (a) => {
-  let i = 0
-  for (const {state, task} of a) {
-    if (!state.resolved)
-      a[i++] = {state, task}
-  }
-  a.length = i
-}
-
-const arrayPromises = async (a, max, logger) => {
-  if (logger) log(`Processing ${a.length} promises ${max} at a time`)
-  const result = []
-  while (running && a.length) {
-    if (logger) logger(a.length)
-    const batch = a.splice(0, max).map(f => {
-      const state = {}
-      return {state, task: f().finally(() => state.resolved = true)}
-    })
-    moreTasks.push(...batch)
-    result.push(...await Promise.all(batch.map(({task}) => task)))
-  }
-  if (Atomics.compareExchange(moreTasksLocked, 0, 0, 1) === 0) {
-    filterResolved(moreTasks)
-    Atomics.store(moreTasksLocked, 0, 0)
-  }
-  return result
-}
 
 const rocketStorage = new ethers.Contract(
   await provider.resolveName('rocketstorage.eth'),
@@ -634,21 +604,26 @@ async function processEpochs() {
   await processEpochsLoop(finalizedSlot, false)
 }
 
+async function cleanup() {
+  running = false
+  interruptArrayPromises()
+  log(`Removing listeners...`)
+  await provider.removeAllListeners('block')
+  await blockLock
+  log(`Awaiting tasks...`)
+  await Promise.allSettled(tasks)
+  await finishMoreTasks()
+  log(`Closing db...`)
+  await db.close()
+}
+
 process.on('SIGINT', async () => {
   log(`Received interrupt...`)
   if (!running) {
     log(`Alreading shutting down...`)
     return
   }
-  running = false
-  log(`Removing listeners...`)
-  await provider.removeAllListeners('block')
-  await blockLock
-  log(`Awaiting tasks...`)
-  await Promise.allSettled(tasks)
-  await Promise.allSettled(moreTasks)
-  log(`Closing db...`)
-  await db.close()
+  await cleanup()
   process.exit()
 })
 

@@ -22,6 +22,44 @@ export const arrayMax = (a) => {
   return max
 }
 
+export const filterResolved = (a) => {
+  let i = 0
+  for (const {state, task} of a) {
+    if (!state.resolved)
+      a[i++] = {state, task}
+  }
+  a.length = i
+}
+
+const moreTasksLocked = new Uint8Array(1)
+const moreTasksPending = []
+const moreTasks = []
+
+export const finishMoreTasks = () => Promise.allSettled(moreTasks.concat(moreTasksPending))
+
+let runningArrayPromises = true
+export const interruptArrayPromises = () => runningArrayPromises = false
+
+export const arrayPromises = async (a, max, logger) => {
+  if (logger) log(`Processing ${a.length} promises ${max} at a time`)
+  const result = []
+  while (runningArrayPromises && a.length) {
+    if (logger) logger(a.length)
+    const batch = a.splice(0, max).map(f => {
+      const state = {}
+      return {state, task: f().finally(() => state.resolved = true)}
+    })
+    moreTasksPending.push(...batch)
+    result.push(...await Promise.all(batch.map(({task}) => task)))
+  }
+  if (Atomics.compareExchange(moreTasksLocked, 0, 0, 1) === 0) {
+    moreTasks.push(...moreTasksPending.splice(0, Infinity))
+    filterResolved(moreTasks)
+    Atomics.store(moreTasksLocked, 0, 0)
+  }
+  return result
+}
+
 export const nullAddress = '0x'.padEnd(42, '0')
 
 export const provider = new ethers.JsonRpcProvider(process.env.RPC)

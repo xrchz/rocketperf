@@ -21,6 +21,9 @@ const NUM_INDEX_TASKS = parseInt(process.env.NUM_INDEX_TASKS) || 2048
 
 const OVERRIDE_START_EPOCH = parseInt(process.env.OVERRIDE_START_EPOCH)
 const STANDARD_START_EPOCH = isNaN(OVERRIDE_START_EPOCH)
+const DUTIES_ONLY = !!process.env.DUTIES_ONLY
+if (DUTIES_ONLY && !STANDARD_START_EPOCH)
+  throw new Error('DUTIES_ONLY cannot use OVERRIDE_START_EPOCH')
 
 function hexStringToBitvector(s) {
   const bitlist = []
@@ -146,7 +149,7 @@ async function updateMinipoolPubkeys() {
 }
 
 let blockLock
-if (STANDARD_START_EPOCH) {
+if (STANDARD_START_EPOCH && !DUTIES_ONLY) {
   provider.addListener('block', async () => {
     if (!blockLock) {
       blockLock = Promise.all([
@@ -650,7 +653,7 @@ async function processEpochs() {
 
   const finalizedSlot = parseInt(process.env.OVERRIDE_FINAL_SLOT) || await getFinalizedSlot()
   if (STANDARD_START_EPOCH) await processEpochsLoop(finalizedSlot, true)
-  await processEpochsLoop(finalizedSlot, false)
+  if (!DUTIES_ONLY) await processEpochsLoop(finalizedSlot, false)
 }
 
 async function cleanup() {

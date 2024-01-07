@@ -286,7 +286,7 @@ io.on('connection', socket => {
         max = Math.min(max, validatorMin)
       }
       else
-        max = Math.min(max, nextEpoch * slotsPerEpoch)
+        max = Math.min(max, (nextEpoch - 1) * slotsPerEpoch)
     }
     socket.emit('slotRangeLimits', {min, max})
   })
@@ -310,7 +310,7 @@ io.on('connection', socket => {
     const result = {}
     const activationEpoch = epochFromActivationInfo(db.get(`${chainId}/validator/${validatorIndex}/activationInfo`))
     const nextEpoch = db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`)
-    if (typeof(nextEpoch) != 'number' || nextEpoch < epochOfSlot(toSlot))
+    if (typeof(nextEpoch) != 'number' || nextEpoch <= epochOfSlot(toSlot))
       return callback({error: {nextEpoch}})
     if (typeof(activationEpoch) != 'number' || epochOfSlot(toSlot) < activationEpoch)
       return callback({error: {activationEpoch}})

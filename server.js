@@ -58,9 +58,12 @@ log(`Node Manager: ${await rocketNodeManager.getAddress()}`)
 
 const isNumber = /^[1-9]\d*$/
 
-// TODO: cache entities per socketid?
+const ENTITY_CACHE_MAX_SIZE = 8192
+const entityCache = new Map()
+// TODO: minipools can't have ENS names? Or maybe they can with setNameForAddr?
+// TODO: watch withdrawal address change events, and ENS name setting events to invalidate cache entries
+// TODO: in the meantime use a TTL?
 
-// TODO: memoise? -- modulo withdrawalAddress and ens names (or store block)
 async function lookupMinipool({minipoolAddress, nodeInfo, withdrawalInfo, validatorInfo}) {
   log(`Lookup minipool ${minipoolAddress}`)
   const minipool = new ethers.Contract(minipoolAddress, minipoolAbi, provider)
@@ -93,8 +96,9 @@ async function lookupMinipool({minipoolAddress, nodeInfo, withdrawalInfo, valida
   }
 }
 
-// TODO: memoise? -- modulo withdrawalAddress and ens names (or store block)
 async function lookupEntity(entity) {
+  const cached = entityCache.get(entity)
+  if (cached) return {entity, values: cached}
   let s = entity
   let minipoolAddress, nodeInfo, withdrawalInfo, validatorInfo, starred = false
   const values = []
@@ -131,7 +135,7 @@ async function lookupEntity(entity) {
     if (minipoolAddress) {
       await lookupMinipool(
         {minipoolAddress, nodeInfo, validatorInfo}
-      ).then(i => values.push(i))
+      ).then(x => values.push(x))
       break
     }
     if (ethers.isAddress(s)) {
@@ -181,7 +185,10 @@ async function lookupEntity(entity) {
     if (!s) break
     log(`resolved as ${s}: rerunning`)
   }
-  log(`Returning ${values.length} values for ${entity}`)
+  log(`Caching and returning ${values.length} values for ${entity}`)
+  entityCache.set(entity, values)
+  while (entityCache.size > ENTITY_CACHE_MAX_SIZE)
+    entityCache.delete(entityCache.keys().next().value)
   return {entity, values}
 }
 

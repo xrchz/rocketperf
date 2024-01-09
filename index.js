@@ -707,7 +707,7 @@ const updatePerformanceDetails = async () => {
         })
       )
     }
-    while (slot++ <= toValue) {
+    while (slot++ < toValue) {
       date.setUTCMilliseconds(secondsPerSlot * 1000)
       if (currentDayKey !== date.getUTCDate()) {
         collectDayData(unfilledFrom, slot-1)

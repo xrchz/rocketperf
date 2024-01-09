@@ -60,7 +60,7 @@ const isNumber = /^[1-9]\d*$/
 
 const ENTITY_CACHE_MAX_SIZE = 8192
 const entityCache = new Map()
-// TODO: minipools can't have ENS names? Or maybe they can with setNameForAddr?
+// TODO: minipools can't have ENS names: don't attempt to resolve
 // TODO: watch withdrawal address change events, and ENS name setting events to invalidate cache entries
 // TODO: in the meantime use a TTL?
 

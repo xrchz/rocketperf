@@ -165,3 +165,9 @@ div.day > span {
 .hidden {
   display: none;
 }
+
+section#developers {
+  max-height: 20em;
+  max-width: 40em;
+  overflow: auto;
+}

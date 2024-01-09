@@ -1206,13 +1206,30 @@ codeLink.innerText = 'site code'
 footerDiv.append(codeLink)
 
 const devDiv = document.createElement('section')
+devDiv.id = 'developers'
 
 devDiv.appendChild(document.createElement('h1')).innerText = 'Developer Section'
 const cachedKeysDiv = document.createElement('div')
+const numCachedKeysDiv = document.createElement('div')
+numCachedKeysDiv.innerText = 'cache size not calculated'
 const cachedKeysList = document.createElement('ul')
+cachedKeysList.id = 'cachedKeys'
 const getCachedKeysButton = document.createElement('input')
-getCachedKeysButton.type = 'button'
+const clearCacheButton = document.createElement('input')
+const lookupCacheInput = document.createElement('input')
+const lookupCacheButton = document.createElement('input')
+const lookupCacheOutput = document.createElement('div')
+;[getCachedKeysButton, clearCacheButton, lookupCacheButton].forEach(e => e.type = 'button')
 getCachedKeysButton.value = 'List Keys in Cache'
+clearCacheButton.value = 'Clear Cache'
+lookupCacheButton.value = 'Lookup Cache'
+const deleteCache = async () => {
+  const req = window.indexedDB.deleteDatabase('cache')
+  await new Promise((resolve, reject) => {
+    req.addEventListener('success', () => resolve(req.result), {passive: true})
+    req.addEventListener('error', () => reject(req.error), {passive: true})
+  })
+}
 const getCachedKeys = async () => {
   getCachedKeysButton.disabled = true
   const db = await openCacheDB()
@@ -1222,18 +1239,51 @@ const getCachedKeys = async () => {
     req.addEventListener('error', () => reject(req.error), {passive: true})
   })
   const frag = document.createDocumentFragment()
-  for (const [indices, [minSlot, maxSlot]] of keys) {
-    frag.appendChild(
-      document.createElement('li')
-    ).innerText = `${minSlot}–${maxSlot}: ${indices}`
+  for (const key of keys) {
+    const li = frag.appendChild(document.createElement('li'))
+    li.appendChild(document.createElement('span')).innerText = JSON.stringify(key)
+    const lookupButton = li.appendChild(document.createElement('input'))
+    const deleteButton = li.appendChild(document.createElement('input'))
+    ;[lookupButton, deleteButton].forEach(e => e.type = 'button')
+    lookupButton.value = 'Lookup'
+    deleteButton.value = 'Delete'
+    lookupButton.addEventListener('click', () => {
+      lookupCacheInput.value = JSON.stringify(key)
+      lookupCacheButton.dispatchEvent(new Event('click'))
+    }, {passive: true})
+    deleteButton.addEventListener('click', () => {
+      console.warn(`TODO: Delete single key not yet implemented`)
+    }, {passive: true})
   }
   cachedKeysList.replaceChildren(frag)
+  numCachedKeysDiv.innerText = `${keys.length} keys in cache at last check`
   db.close()
   getCachedKeysButton.disabled = false
 }
+const lookupCache = async () => {
+  lookupCacheOutput.innerText = ''
+  const [indices, [minSlot, maxSlot]] = JSON.parse(lookupCacheInput.value)
+  if ([minSlot, maxSlot].some(e => typeof e != 'number') || !indices?.every(i => typeof i == 'number')) {
+    console.warn(`Bad input for lookupCache: ${indices} ${minSlot} ${maxSlot}`)
+    return
+  }
+  const db = await openCacheDB()
+  const missHandler = () => Promise.reject('lookupCache does not miss')
+  const res = await cacheRetrieve(db, indices, minSlot, maxSlot, missHandler)
+  lookupCacheOutput.innerText = JSON.stringify(res, (k, v) =>
+    typeof v == 'bigint' ? v.toString()
+    : v instanceof Set ? Array.from(v.values())
+    : v
+  )
+}
 getCachedKeysButton.addEventListener('click', getCachedKeys, {passive: true})
+clearCacheButton.addEventListener('click', deleteCache, {passive: true})
+lookupCacheButton.addEventListener('click', lookupCache, {passive: true})
 cachedKeysDiv.append(
   getCachedKeysButton,
+  lookupCacheInput, lookupCacheButton, lookupCacheOutput,
+  clearCacheButton,
+  numCachedKeysDiv,
   cachedKeysList
 )
 devDiv.append(
@@ -1307,13 +1357,15 @@ window.addEventListener('popstate', setParamsFromUrl, {passive: true})
 
 setParamsFromUrl()
 
+// TODO: make the "This ..." buttons say "Past ..." instead, and calculate back from Max slot (rather than now())
 // TODO: find + fix warnings due to multiple attempts to add the same key to the cache
+// TODO: find + fix warnings due to constraint violation sometimes when adding to cache
 // TODO: add attestation accuracy and reward info
 // TODO: disable add/sub buttons when they won't work?
-// TODO: show tooltip + more details when clicking a day (e.g. proposers) - also, makes tooltips more visible on mobile
-// TODO: speed up loading validators (server-side caching?)
 // TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?
+// TODO: show tooltip + more details when clicking a day (e.g. proposers) - also, makes tooltips more visible on mobile
 // TODO: server sends "update minimum/maximum slot" messages whenever finalized increases?
+// TODO: prevent moving from slider beyond to slider's value - capture mouse events?
 // TODO: add NO portion of rewards separately from validator rewards? (need to track commission and borrow)
 // TODO: add dev indexeddb explorer + editor
 // TODO: check (and handle) URL length limit? e.g. store on server for socketid (with ttl) when too long

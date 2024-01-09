@@ -138,14 +138,24 @@ div.yearContainer > span {
 div.day.spacer {
   background-color: orange;
 }
-div.day.proposer {
-  border: medium solid gold;
-}
 div.day.loading {
   background-color: sandybrown;
 }
 div.day.loading > span {
   color: firebrick;
+}
+.loading > span, h2.loading, h3.loading {
+  animation: 1s ease-in-out infinite alternate loading;
+}
+@keyframes loading { from { opacity: 5%; } }
+div.day.perfall {
+ border: medium solid green;
+}
+div.day.proposer {
+  border: medium solid gold;
+}
+div.day.perfall.proposer {
+  border: medium solid yellowgreen;
 }
 div.day {
   height: 2em;

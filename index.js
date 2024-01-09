@@ -171,19 +171,29 @@ perfHeading.innerText = 'Performance of Selected Validators'
 const setPerformanceHeadingsLoading = () => {
   summaryHeading.innerText = 'Loading Summary...'
   detailsHeading.innerText = 'Loading Details...'
+  ;[summaryHeading, detailsHeading].forEach(e => e.classList.add('loading'))
 }
 
 const setHeadingsLoading = () => {
   selectedHeading.innerText = 'Loading Validators...'
   slotsHeading.innerText = 'Loading Slots Range...'
+  ;[slotsHeading, selectedHeading].forEach(e => e.classList.add('loading'))
   setPerformanceHeadingsLoading()
 }
 
-const updateSlotsHeading = () =>
+const updateSlotsHeading = () => {
   slotsHeading.innerText = 'Time Range (UTC)'
+  slotsHeading.classList.remove('loading')
+}
 
-const updateSummaryHeading = () => summaryHeading.innerText = 'Summary'
-const updateDetailsHeading = () => detailsHeading.innerText = 'Details'
+const updateSummaryHeading = () => {
+  summaryHeading.innerText = 'Summary'
+  summaryHeading.classList.remove('loading')
+}
+const updateDetailsHeading = () => {
+  detailsHeading.innerText = 'Details'
+  detailsHeading.classList.remove('loading')
+}
 
 const updatePerformanceHeadings = () => {
   updateSummaryHeading()
@@ -198,6 +208,7 @@ function updateSelectedHeading(n1) {
   }
   else
     selectedHeading.innerText = 'Selected Validators'
+  selectedHeading.classList.remove('loading')
 }
 
 updateSlotsHeading()

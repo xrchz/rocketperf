@@ -25,6 +25,9 @@ const DUTIES_ONLY = !!process.env.DUTIES_ONLY
 if (DUTIES_ONLY && !STANDARD_START_EPOCH)
   throw new Error('DUTIES_ONLY cannot use OVERRIDE_START_EPOCH')
 
+const OVERRIDE_FINAL_SLOT = parseInt(process.env.OVERRIDE_FINAL_SLOT)
+const STANDARD_FINAL_SLOT = isNaN(OVERRIDE_FINAL_SLOT)
+
 function hexStringToBitvector(s) {
   const bitlist = []
   let hexDigits = s.substring(2)
@@ -214,11 +217,11 @@ async function getActivationInfo(validatorIndex) {
   return activationInfo
 }
 
-const validatorStartEpochs = new Map()
+const validatorActivationEpochs = new Map()
 
-const getValidatorsIdsForEpoch = (epoch) => new Set(
-  Array.from(validatorStartEpochs.entries()).flatMap(
-    ([id, actEp]) => actEp <= epoch ? [id] : []
+const getValidatorsIdsForEpoch = (validatorNextEpochs, epoch) => new Set(
+  validatorNextEpochs.flatMap(
+    ([id, nextEpoch]) => nextEpoch <= epoch ? [id] : []
   )
 )
 
@@ -513,22 +516,25 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
   const startKey = STANDARD_START_EPOCH ? '' : `/${OVERRIDE_START_EPOCH}`
   const uptoKey = `${uptoKeyBase}${startKey}`
   const startDefault = STANDARD_START_EPOCH ? 0 : OVERRIDE_START_EPOCH
-  const startEpoch =
-    arrayMin(
-      Array.from(validatorStartEpochs.entries()).map(
-        ([validatorIndex, activationEpoch]) =>
-        Math.max(
-          db.get(`${chainId}/validator/${validatorIndex}/${uptoKey}`) ?? startDefault,
-          activationEpoch
-        )
+
+  const validatorNextEpochs = Array.from(validatorActivationEpochs.entries()).map(
+    ([validatorIndex, activationEpoch]) => [
+      validatorIndex,
+      Math.max(
+        db.get(`${chainId}/validator/${validatorIndex}/${uptoKey}`) ?? startDefault,
+        activationEpoch
       )
-    )
+    ]
+  )
+
+  const startEpoch = arrayMin(validatorNextEpochs.map(([id, nextEpoch]) => nextEpoch))
+  log(`Calculated startEpoch as ${startEpoch}`)
 
   const alreadyOverridden = new Set()
 
   if (!STANDARD_START_EPOCH) {
     let changed
-    for (const validatorIndex of validatorStartEpochs.keys()) {
+    for (const validatorIndex of validatorActivationEpochs.keys()) {
       const standardKey = `${chainId}/validator/${validatorIndex}/nextEpoch`
       const standardNextEpoch = db.get(standardKey)
       if (standardNextEpoch >= OVERRIDE_START_EPOCH) {
@@ -555,6 +561,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
       }
     }
     if (changed) {
+      log(`Changed nextEpoch overrides, exiting...`)
       await cleanup()
       process.exit()
     }
@@ -562,9 +569,19 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
 
   const finalEpoch = epochOfSlot(finalizedSlot - 1)
 
-  log(`Getting ${dutiesOnly ? 'attestation duties' : 'data'} for epochs ${startEpoch} through ${finalEpoch}`)
+  if (finalEpoch < startEpoch) {
+    if (STANDARD_FINAL_SLOT || dutiesOnly) {
+      log(`Start epoch ${startEpoch} greater than finalized ${finalEpoch}, continuing...`)
+      return
+    }
+    else {
+      log(`Reached final epoch ${finalEpoch}, exiting...`)
+      await cleanup()
+      process.exit()
+    }
+  }
 
-  if (finalEpoch < startEpoch) return
+  log(`Getting ${dutiesOnly ? 'attestation duties' : 'data'} for epochs ${startEpoch} through ${finalEpoch}`)
 
   const epochsToProcess = Array.from(Array(finalEpoch - startEpoch + 1).keys()).map(x => startEpoch + x)
   const pendingEpochs = epochsToProcess.slice()
@@ -585,7 +602,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
     const timingMsg = epochsProcessed ? `, averaging ${rateStr} per epoch` : ''
     log(`${epochsToProcess.length} epochs left to process ${processMsg}${timingMsg}`)
     const epoch = epochsToProcess.shift()
-    const validatorIds = getValidatorsIdsForEpoch(epoch)
+    const validatorIds = getValidatorsIdsForEpoch(validatorNextEpochs, epoch)
     const state = {}
     const onCompletion = async () => {
       const epochIndex = pendingEpochs.indexOf(epoch)
@@ -642,16 +659,16 @@ async function processEpochs() {
         if (!(0 <= parseInt(validatorIndex))) return
         const epoch = epochFromActivationInfo(await getActivationInfo(validatorIndex))
         if (typeof epoch == 'number')
-          validatorStartEpochs.set(validatorIndex, epoch)
+          validatorActivationEpochs.set(validatorIndex, epoch)
         else
-          log(`Skipping ${validatorIndex} with start epoch ${epoch}`)
+          log(`Skipping ${validatorIndex} with activation epoch ${epoch}`)
       }
     ),
     MAX_BEACON_RANGE,
     (numLeft) => log(`Getting activationInfo, ${numLeft} validators left`)
   )
 
-  const finalizedSlot = parseInt(process.env.OVERRIDE_FINAL_SLOT) || await getFinalizedSlot()
+  const finalizedSlot = STANDARD_FINAL_SLOT ? await getFinalizedSlot() : OVERRIDE_FINAL_SLOT
   if (STANDARD_START_EPOCH) await processEpochsLoop(finalizedSlot, true)
   if (!DUTIES_ONLY) await processEpochsLoop(finalizedSlot, false)
 }

@@ -528,7 +528,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
   )
 
   const startEpoch = arrayMin(validatorNextEpochs.map(([id, nextEpoch]) => nextEpoch))
-  log(`Calculated startEpoch as ${startEpoch}`)
+  log(`Calculated startEpoch for ${uptoKey} as ${startEpoch}`)
 
   const alreadyOverridden = new Set()
 
@@ -600,7 +600,8 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
     const rateSecondsStr = 0 <= rateMillisecondsLeft ? ` ${(rateMillisecondsLeft/1000).toFixed(2)}s` : ''
     const rateStr = rate >= 60e3 ? `${rateMinutes}m${rateSecondsStr}` : `${(rate/1000).toFixed(2)}s`
     const timingMsg = epochsProcessed ? `, averaging ${rateStr} per epoch` : ''
-    log(`${epochsToProcess.length} epochs left to process ${processMsg}${timingMsg}`)
+    const plural = epochsToProcess.length == 1 ? '' : 's'
+    log(`${epochsToProcess.length} epoch${plural} left to process ${processMsg}${timingMsg}`)
     const epoch = epochsToProcess.shift()
     const validatorIds = getValidatorsIdsForEpoch(validatorNextEpochs, epoch)
     const state = {}

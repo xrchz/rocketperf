@@ -920,28 +920,32 @@ rangeButtons.classList.add('rangeButtons')
 async function calculateSlotRange(period) {
   fromSlot.dataset.prevValue = fromSlot.value
   toSlot.dataset.prevValue = toSlot.value
-  const date = new Date()
   fromSlot.value = slotRangeLimits.min
   toSlot.value = slotRangeLimits.max
-  if (period === 'year') {
-    date.setUTCMonth(0, 1)
-    date.setUTCHours(0, 0, 0, 0)
-  }
-  else if (period === 'month') {
-    date.setUTCDate(1)
-    date.setUTCHours(0, 0, 0, 0)
-  }
-  else if (period === 'week') {
-    date.setUTCDate(date.getUTCDate() - date.getUTCDay())
-    date.setUTCHours(0, 0, 0, 0)
-  }
-  else if (period === 'today') {
-    date.setUTCHours(0, 0, 0, 0)
-  }
-  else if (period === 'hour') {
-    date.setUTCMinutes(0, 0, 0)
-  }
-  if (period !== 'time') {
+  if (period !== 'range') {
+    const date = await new Promise(resolve =>
+      socket.emit('slotToTimestamp', slotRangeLimits.max, (ts) =>
+        resolve(new Date(ts * 1000))
+      )
+    )
+    if (period === 'year') {
+      date.setUTCMonth(0, 1)
+      date.setUTCHours(0, 0, 0, 0)
+    }
+    else if (period === 'month') {
+      date.setUTCDate(1)
+      date.setUTCHours(0, 0, 0, 0)
+    }
+    else if (period === 'week') {
+      date.setUTCDate(date.getUTCDate() - date.getUTCDay())
+      date.setUTCHours(0, 0, 0, 0)
+    }
+    else if (period === 'day') {
+      date.setUTCHours(0, 0, 0, 0)
+    }
+    else if (period === 'hour') {
+      date.setUTCMinutes(0, 0, 0)
+    }
     const time = date.getTime() / 1000
     await new Promise(resolve => {
       socket.emit('timeToSlot', time, (slot) => {
@@ -963,20 +967,13 @@ const makeButton = (v) => {
   return b
 }
 
-const allTimeButton = makeButton('All Time')
-const lastYearButton = makeButton('This Year')
-const lastMonthButton = makeButton('This Month')
-const lastWeekButton = makeButton('This Week')
-const lastDayButton = makeButton('Today')
-const lastHourButton = makeButton('This Hour')
-
 rangeButtons.append(
-  allTimeButton,
-  lastYearButton,
-  lastMonthButton,
-  lastWeekButton,
-  lastDayButton,
-  lastHourButton
+  makeButton('Full Range'),
+  makeButton('Past Year'),
+  makeButton('Past Month'),
+  makeButton('Past Week'),
+  makeButton('Past Day'),
+  makeButton('Past Hour')
 )
 
 const fromButtons = document.createElement('div')

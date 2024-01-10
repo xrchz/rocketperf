@@ -88,6 +88,12 @@ div.dirRangeButtons.from {
 }
 div#footer {
   margin-top: 2em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+div#footer > p {
+  margin-top: 0;
 }
 div.perfnil { background-color: orange; }
 div.perf0   { background-color: darkred; }

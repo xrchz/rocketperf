@@ -200,21 +200,6 @@ const updatePerformanceHeadings = () => {
   updateDetailsHeading()
 }
 
-function updateSelectedHeading(n1) {
-  const n = n1 - 1
-  if (n) {
-    const s = n > 1 ? 's' : ''
-    selectedHeading.innerText = `${n} Selected Validator${s}`
-  }
-  else
-    selectedHeading.innerText = 'Selected Validators'
-  selectedHeading.classList.remove('loading')
-}
-
-updateSlotsHeading()
-updatePerformanceHeadings()
-updateSelectedHeading()
-
 const entityEntryBox = document.createElement('textarea')
 entityEntryBox.placeholder = 'Node, minipool, or withdrawal addresses/ENS names,'.concat(
   ' and/or validator pubkeys/indices, separated by spaces and/or commas.',
@@ -277,54 +262,55 @@ function sortByColumn(compareFn, headerId) {
   minipoolsTable.append(...rows)
 }
 
-minipoolsTable.appendChild(document.createElement('tr'))
-  .append(
-    ...headings.map((h, i) => {
-      const th = document.createElement('th')
-      th.classList.add('columnTools')
-      const headerId = `th-${h.toLowerCase()}`
-      const bUp = document.createElement('input')
-      const bDown = document.createElement('input')
-      const bCopy = document.createElement('input')
-      bUp.value = '⬇️'
-      bDown.value = '⬆️'
-      bUp.title = 'sort column ascending'
-      bDown.title = 'sort column descending'
-      bCopy.value = '📋'
-      bCopy.title = 'copy unique included column items'
-      bCopy.addEventListener('click', () => {
-        const columnText = Array.from(
-          new Set(
-            Array.from(
-              minipoolsTable.querySelectorAll(`td[headers~="${headerId}"] > a`)
-            ).flatMap(a => isIncluded(a) ? [a.innerText] : [])
-          ).values()
-        ).join('\n')
-        if (columnText.length)
-          navigator.clipboard.writeText(columnText)
-      }, {passive: true})
-      const collator = h == 'Validator' ? numericCollator : stringCollator
-      bUp.addEventListener('click', () => sortByColumn(sortUp(collator), headerId), {passive: true})
-      bDown.addEventListener('click', () => sortByColumn(sortDown(collator), headerId), {passive: true})
-      const buttons = [bUp, bDown, bCopy]
-      buttons.forEach(b => b.type = 'button')
-      if (h == 'Include') {
-        const ch = document.createElement('input')
-        ch.id = 'include-all-checked'
-        ch.type = 'checkbox'
-        ch.addEventListener('change', () => {
+const columnToolsRow = minipoolsTable.appendChild(document.createElement('tr'))
+columnToolsRow.id = 'columnTools'
+columnToolsRow.append(
+  ...headings.map((h, i) => {
+    const th = document.createElement('th')
+    th.classList.add('columnTools')
+    const headerId = `th-${h.toLowerCase()}`
+    const bUp = document.createElement('input')
+    const bDown = document.createElement('input')
+    const bCopy = document.createElement('input')
+    bUp.value = '⬇️'
+    bDown.value = '⬆️'
+    bUp.title = 'sort column ascending'
+    bDown.title = 'sort column descending'
+    bCopy.value = '📋'
+    bCopy.title = 'copy unique included column items'
+    bCopy.addEventListener('click', () => {
+      const columnText = Array.from(
+        new Set(
           Array.from(
-            minipoolsTable.querySelectorAll('input[type="checkbox"]')
-          ).forEach(e => e.checked = ch.checked)
-          changeSelectedBoxes()
-        })
-        th.append(...buttons.toSpliced(-1, 1, ch))
-      }
-      else
-        th.append(...buttons)
-      return th
-    })
-  )
+            minipoolsTable.querySelectorAll(`td[headers~="${headerId}"] > a`)
+          ).flatMap(a => isIncluded(a) ? [a.innerText] : [])
+        ).values()
+      ).join('\n')
+      if (columnText.length)
+        navigator.clipboard.writeText(columnText)
+    }, {passive: true})
+    const collator = h == 'Validator' ? numericCollator : stringCollator
+    bUp.addEventListener('click', () => sortByColumn(sortUp(collator), headerId), {passive: true})
+    bDown.addEventListener('click', () => sortByColumn(sortDown(collator), headerId), {passive: true})
+    const buttons = [bUp, bDown, bCopy]
+    buttons.forEach(b => b.type = 'button')
+    if (h == 'Include') {
+      const ch = document.createElement('input')
+      ch.id = 'include-all-checked'
+      ch.type = 'checkbox'
+      ch.addEventListener('change', () => {
+        Array.from(
+          minipoolsTable.querySelectorAll('input[type="checkbox"]')
+        ).forEach(e => e.checked = ch.checked)
+        changeSelectedBoxes()
+      })
+      th.append(...buttons.toSpliced(-1, 1, ch))
+    }
+    else
+      th.append(...buttons)
+    return th
+  })
+)
 Array.from(minipoolsTable.children).forEach(
   r => r.classList.add('head')
 )
@@ -342,6 +328,27 @@ function updateIncludeAllChecked() {
   else if (numChecked == numBoxes) allChecked.checked = true
   else allChecked.indeterminate = true
 }
+
+function updateSelectedHeading(n1) {
+  const n = n1 - 1
+  if (n) {
+    const s = n > 1 ? 's' : ''
+    selectedHeading.innerText = `${n} Selected Validator${s}`
+    if (n > 1)
+      columnToolsRow.classList.remove('hidden')
+    else
+      columnToolsRow.classList.add('hidden')
+  }
+  else {
+    selectedHeading.innerText = 'Selected Validators'
+    columnToolsRow.classList.add('hidden')
+  }
+  selectedHeading.classList.remove('loading')
+}
+
+updateSlotsHeading()
+updatePerformanceHeadings()
+updateSelectedHeading()
 
 const slotSelectionDiv = document.createElement('div')
 slotSelectionDiv.id = 'slotSelection'
@@ -1211,15 +1218,38 @@ socket.on('unknownEntities', entities => {
 
 const footerDiv = document.createElement('div')
 footerDiv.id = 'footer'
-const codeLink = document.createElement('a')
+const codeLinkP = document.createElement('p')
+const codeLink = codeLinkP.appendChild(document.createElement('a'))
 codeLink.href = 'https://github.com/xrchz/rocketperf'
 codeLink.innerText = 'site code'
-footerDiv.append(codeLink)
+
+const infoP = document.createElement('p')
+const grantLink = document.createElement('a')
+grantLink.href = 'https://dao.rocketpool.net/t/round-6-gmc-call-for-grant-applications-deadline-is-november-11/2264/2'
+grantLink.innerText = 'GA062301'
+
+const authorLink = document.createElement('a')
+authorLink.innerText = 'ramana.eth'
+authorLink.href = 'https://xrchz.net'
+
+infoP.append(
+  'developed by ', authorLink, ' for ', grantLink
+)
 
 const devDiv = document.createElement('section')
 devDiv.id = 'developers'
+devDiv.classList.add('hidden')
+
+const showDevButton = document.createElement('input')
+showDevButton.type = 'button'
+showDevButton.value = 'Dev Sec'
+showDevButton.addEventListener('click', () => devDiv.classList.toggle('hidden'), {passive: true})
+
+footerDiv.append(infoP, codeLinkP, showDevButton)
 
 devDiv.appendChild(document.createElement('h1')).innerText = 'Developer Section'
+const cacheDivHeader = document.createElement('h2')
+cacheDivHeader.innerText = 'Cache'
 const cachedKeysDiv = document.createElement('div')
 const numCachedKeysDiv = document.createElement('div')
 numCachedKeysDiv.innerText = 'cache size not calculated'
@@ -1297,8 +1327,43 @@ cachedKeysDiv.append(
   numCachedKeysDiv,
   cachedKeysList
 )
+
+const todoListHeader = document.createElement('h2')
+todoListHeader.innerText = 'TODO'
+const todoList = document.createElement('ul')
+todoList.append(...[
+  "find + fix warnings due to multiple attempts to add the same key to the cache (or other source of Constraint Violation)",
+  "show tooltip + more details when clicking a day (e.g. proposers) - also, makes tooltips more visible on mobile. selected day text colour.",
+  "add attestation accuracy and reward info",
+  "make certain css colors (and maybe other styles) editable?",
+  "disable add/sub buttons when they won't work?",
+  "prevent moving from slider beyond to slider's value - capture mouse events?",
+  "add volatility delay before responding to user input changes to selected minipools or slots (for checkboxes, spinners, sliders only)?",
+  "add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?",
+  'server sends "update minimum/maximum slot" messages whenever finalized increases?',
+  "check (and handle) URL length limit? e.g. store on server for socketid (with ttl) when too long",
+  "add copy for whole table?",
+  "buttons to toggle or set include up or down from point in the list",
+  'add tool for selecting minipools from the list by "painting"?',
+  "speed up compression/decompression of indices?",
+  "make weekday start configurable (Sun vs Mon)?",
+  "add selector for subperiod sizes (instead of year/month/day)?",
+  "add NO portion of rewards separately from validator rewards? (need to track commission and borrow)",
+  "look into execution layer rewards too? probably ask for more money to implement that",
+  "add free-form text selectors for times too?",
+  "add timezone selection?"
+].map(x => {
+    const li = document.createElement('li')
+    li.innerText = x
+    return li
+  })
+)
+
 devDiv.append(
-  cachedKeysDiv
+  cacheDivHeader,
+  cachedKeysDiv,
+  todoListHeader,
+  todoList
 )
 
 body.replaceChildren(
@@ -1368,27 +1433,4 @@ window.addEventListener('popstate', setParamsFromUrl, {passive: true})
 
 setParamsFromUrl()
 
-// TODO: make the "This ..." buttons say "Past ..." instead, and calculate back from Max slot (rather than now())
-// TODO: find + fix warnings due to multiple attempts to add the same key to the cache
-// TODO: find + fix warnings due to constraint violation sometimes when adding to cache
-// TODO: add attestation accuracy and reward info
-// TODO: disable add/sub buttons when they won't work?
-// TODO: add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?
-// TODO: show tooltip + more details when clicking a day (e.g. proposers) - also, makes tooltips more visible on mobile
-// TODO: server sends "update minimum/maximum slot" messages whenever finalized increases?
-// TODO: prevent moving from slider beyond to slider's value - capture mouse events?
-// TODO: add NO portion of rewards separately from validator rewards? (need to track commission and borrow)
-// TODO: add dev indexeddb explorer + editor
-// TODO: check (and handle) URL length limit? e.g. store on server for socketid (with ttl) when too long
-// TODO: add volatility delay before responding to user input changes to selected minipools or slots (for checkboxes, spinners, sliders only)?
-// TODO: add copy for whole table?
-// TODO: add tool for selecting minipools from the list by "painting"?
-// TODO: speed up compression/decompression of indices?
-// TODO: make certain css colors (and maybe other styles) editable?
-// TODO: make weekday start configurable (Sun vs Mon)?
-// TODO: add selector for subperiod sizes (instead of year/month/day)?
-// TODO: look into execution layer rewards too? probably ask for more money to implement that
-// TODO: add free-form text selectors for times too?
-// TODO: add timezone selection?
-// TODO: animate ellipses in loading headings? add other indications of out-of-date data?
 // @license-end

@@ -16,6 +16,11 @@ td.validator {
 td.selected {
   text-align: center;
 }
+section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
 div#minipools {
   overflow: auto;
   max-height: 32em;
@@ -86,13 +91,13 @@ div.dirRangeButtons.from {
 :is(#allSummaryTable, #summaryTable) > tr > td {
   text-align: right;
 }
-div#footer {
+footer {
   margin-top: 2em;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-div#footer > p {
+footer > p {
   margin-top: 0;
 }
 div.perfnil { background-color: orange; }

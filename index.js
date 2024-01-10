@@ -156,9 +156,12 @@ const MAX_CONCURRENT_VALIDATORS = 4
 
 const MAX_QUERY_STRING_INDICES = 64
 
-const titleHeading = document.createElement('h1')
+const header = document.createElement('header')
+const titleHeading = header.appendChild(document.createElement('h1'))
+const entrySection = document.createElement('section')
 const entryHeading = document.createElement('h2')
 const selectedHeading = document.createElement('h2')
+const performanceSection = document.createElement('section')
 const perfHeading = document.createElement('h2')
 const slotsHeading = document.createElement('h3')
 const summaryHeading = document.createElement('h3')
@@ -1209,8 +1212,7 @@ socket.on('unknownEntities', entities => {
   )
 })
 
-const footerDiv = document.createElement('div')
-footerDiv.id = 'footer'
+const footer = document.createElement('footer')
 const codeLinkP = document.createElement('p')
 const codeLink = codeLinkP.appendChild(document.createElement('a'))
 codeLink.href = 'https://github.com/xrchz/rocketperf'
@@ -1235,10 +1237,10 @@ devDiv.classList.add('hidden')
 
 const showDevButton = document.createElement('input')
 showDevButton.type = 'button'
-showDevButton.value = 'Dev Sec'
+showDevButton.value = 'dev'
 showDevButton.addEventListener('click', () => devDiv.classList.toggle('hidden'), {passive: true})
 
-footerDiv.append(infoP, codeLinkP, showDevButton)
+footer.append(infoP, codeLinkP, showDevButton)
 
 devDiv.appendChild(document.createElement('h1')).innerText = 'Developer Section'
 const cacheDivHeader = document.createElement('h2')
@@ -1359,22 +1361,44 @@ devDiv.append(
   todoList
 )
 
-body.replaceChildren(
-  titleHeading,
+entrySection.append(
   entryHeading,
   entityEntryBox,
   entityFailures,
   selectedHeading,
-  minipoolsDiv,
-  perfHeading,
+  minipoolsDiv
+)
+
+const slotsSection = document.createElement('section')
+slotsSection.append(
   slotsHeading,
   slotRangeLimitsDiv,
-  slotSelectionDiv,
+  slotSelectionDiv
+)
+
+const summarySection = document.createElement('section')
+summarySection.append(
   summaryHeading,
-  summaryDiv,
+  summaryDiv
+)
+const detailsSection = document.createElement('section')
+detailsSection.append(
   detailsHeading,
-  detailsDiv,
-  footerDiv,
+  detailsDiv
+)
+
+performanceSection.append(
+  perfHeading,
+  slotsSection,
+  summarySection,
+  detailsSection
+)
+
+body.replaceChildren(
+  header,
+  entrySection,
+  performanceSection,
+  footer,
   devDiv
 )
 

@@ -60,9 +60,13 @@ const isNumber = /^[1-9]\d*$/
 
 const ENTITY_CACHE_MAX_SIZE = 8192
 const entityCache = new Map()
-// TODO: minipools can't have ENS names: don't attempt to resolve
-// TODO: watch withdrawal address change events, and ENS name setting events to invalidate cache entries
-// TODO: in the meantime use a TTL?
+const validatorCache = new Map()
+// TODO: watch withdrawal address change events, and ENS name setting events (ReverseClaimed on the reverse registrar?) to invalidate cache entries
+// TODO: cache separately things that change and things that don't:
+//  entity -> index list -- update on withdrawal change events for withdrawal address entities, and ENS name events for ENS names, and minipool creations for node addresses
+//  index -> minipool info without ENS names
+//  address -> ENS name ? or just use provider lookup each time? (otherwise update on ENS name events)
+//  OR just skip caching and make loading of this data more concurrent? i.e. return what is ready when it's ready (with volatile)
 
 async function lookupMinipool({minipoolAddress, nodeInfo, withdrawalInfo, validatorInfo}) {
   log(`Lookup minipool ${minipoolAddress}`)
@@ -87,7 +91,6 @@ async function lookupMinipool({minipoolAddress, nodeInfo, withdrawalInfo, valida
   const {withdrawalAddress, withdrawalEnsName} = withdrawalInfo || await getWithdrawalInfo(nodeAddress)
   return {
     minipoolAddress,
-    minipoolEnsName: await provider.lookupAddress(minipoolAddress),
     nodeAddress,
     nodeEnsName,
     withdrawalAddress,

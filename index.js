@@ -1122,14 +1122,11 @@ const changeSelectedBoxes = () => {
 socket.on('minipools', async minipools => {
   console.log(`Received ${minipools.length} minipools`)
   const frag = document.createDocumentFragment()
-  for (const {minipoolAddress, minipoolEnsName,
-              nodeAddress, nodeEnsName,
-              withdrawalAddress, withdrawalEnsName,
-              validatorIndex} of minipools) {
+  for (const {minipoolAddress, nodeAddress, nodeEnsName, withdrawalAddress, withdrawalEnsName, validatorIndex} of minipools) {
     const tr = frag.appendChild(document.createElement('tr'))
     const mpA = document.createElement('a')
     mpA.href = `https://rocketscan.io/minipool/${minipoolAddress}`
-    mpA.innerText = minipoolEnsName || minipoolAddress
+    mpA.innerText = minipoolAddress
     const nodeA = document.createElement('a')
     nodeA.href = `https://rocketscan.io/node/${nodeAddress}`
     nodeA.innerText = nodeEnsName || nodeAddress
@@ -1152,8 +1149,7 @@ socket.on('minipools', async minipools => {
         return td
       })
     )
-    mpA.parentElement.classList.add('minipool')
-    if (!minipoolEnsName) mpA.parentElement.classList.add('address')
+    mpA.parentElement.classList.add('minipool', 'address')
     nodeA.parentElement.classList.add('node')
     if (!nodeEnsName) nodeA.parentElement.classList.add('address')
     wA.parentElement.classList.add('withdrawal')

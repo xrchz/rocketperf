@@ -122,7 +122,7 @@ const decompressIndices = (s) => s ?
 
 const idReplacements = new Map([['%', 'P'], ['(', 'L'], [')', 'R']])
 const toId = (s) => s.toLowerCase().replaceAll(
-  /\s|%|(|)/g, (x) => idReplacements.get(x) ?? '-')
+  /\s|%|\(|\)/g, (x) => idReplacements.get(x) ?? '-')
 
 function formatUnits(wei, decimals) {
   const {val, neg} = wei < 0n ? {val: wei * -1n, neg: '-'} : {val: wei, neg: ''}

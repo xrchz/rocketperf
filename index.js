@@ -503,7 +503,7 @@ async function cacheRetrieve(db, indices, minSlot, maxSlot, missHandler) {
     {key, time: Math.round(new Date().getTime() / 1000)}
   )
   if (v) {
-    console.log(`cache hit for ${minSlot} - ${maxSlot}`)
+    // console.log(`cache hit for ${minSlot} - ${maxSlot}`)
     return v
   }
   const computed = await missHandler().catch(e => {
@@ -519,9 +519,9 @@ async function cacheRetrieve(db, indices, minSlot, maxSlot, missHandler) {
       resolve(e)
     }, {passive: true})
   })
-  console.log(`cached computed value for ${minSlot} - ${maxSlot}`)
+  // console.log(`cached computed value for ${minSlot} - ${maxSlot}`)
   navigator.storage.estimate().then(({quota, usage}) => {
-    console.log(`Current storage: ${usage} usage / ${quota} quota`)
+    // console.log(`Current storage: ${usage} usage / ${quota} quota`)
     if (usage / quota > EVICTION_THRESHOLD) { // TODO: do multiple evictions if still over?
       db.transaction('lru').objectStore('lru').index('').openCursor().addEventListener(
         'success', (e) => e.target.result.delete(), {passive: true}
@@ -532,7 +532,7 @@ async function cacheRetrieve(db, indices, minSlot, maxSlot, missHandler) {
 }
 
 function renderCalendar(data) {
-  console.log(`Rendering calendar...`)
+  // console.log(`Rendering calendar...`)
   const frag = document.createDocumentFragment()
   for (const year of Object.keys(data).map(k => parseInt(k))) {
     const yearContainer = frag.appendChild(document.createElement('div'))
@@ -592,7 +592,7 @@ const mergeIntoDay = (day, r) => Object.entries(day).forEach(
 
 async function validatorPerformance(db, validatorIndex, fromSlot, toSlot) {
   async function missHandler() {
-    console.log(`cache miss for ${validatorIndex} ${fromSlot} - ${toSlot}`)
+    // console.log(`cache miss for ${validatorIndex} ${fromSlot} - ${toSlot}`)
     let min = fromSlot
     const nextMax = () => Math.min(toSlot, min + MAX_SLOT_QUERY_RANGE - 1)
     let max = nextMax()
@@ -614,11 +614,11 @@ async function validatorPerformance(db, validatorIndex, fromSlot, toSlot) {
     const result = {...emptyDay()}
     while (min <= toSlot) {
       const chunkKey = `${min}-${max}`
-      console.log(`Checking cache for ${validatorIndex} ${chunkKey}...`)
+      // console.log(`Checking cache for ${validatorIndex} ${chunkKey}...`)
       const chunk = await cacheRetrieve(db, [validatorIndex], min, max,
         () => new Promise(
           (resolve, reject) => {
-            console.log(`cache miss for ${validatorIndex} ${chunkKey}`)
+            // console.log(`cache miss for ${validatorIndex} ${chunkKey}`)
             callServer(resolve, reject)
           }
         )
@@ -653,7 +653,7 @@ const updatePerformanceDetails = async () => {
     let resolveRender
     const waitForRender = new Promise(resolve => resolveRender = resolve)
     async function fillDay(dayObj, dateKey) {
-      console.log(`Filling ${dateKey}...`)
+      // console.log(`Filling ${dateKey}...`)
       addTotals(dayObj)
       const [year, monthIndex, day] = dateKey.split('-')
       await waitForRender
@@ -727,26 +727,25 @@ const updatePerformanceDetails = async () => {
       daysFilled.push(
         new Promise(async resolve => {
           async function missHandler() {
-            console.log(`cache miss for ${min} - ${max}...`)
+            // console.log(`cache miss for ${min} - ${max}...`)
             const getValidatorPerformance = indices.map(validatorIndex => async () => {
               const validatorDayObj = await validatorPerformance(
                 db, validatorIndex, min, max
               ).catch((e) => {
-                // TODO: indicate error on page?
                 console.warn(`error getting ${validatorIndex} ${min}-${max}: ${JSON.stringify(e)}`)
                 return {}
               })
               mergeIntoDay(dayToFill, validatorDayObj)
             })
             while (getValidatorPerformance.length) {
-              console.log(`${getValidatorPerformance.length} indices left on ${min} - ${max}`)
+              // console.log(`${getValidatorPerformance.length} indices left on ${min} - ${max}`)
               const chunk = getValidatorPerformance.splice(0, MAX_CONCURRENT_VALIDATORS)
               await Promise.all(chunk.map(f => f()))
-              console.log(`got performance for ${chunk.length} validators for ${min} - ${max}`)
+              // console.log(`got performance for ${chunk.length} validators for ${min} - ${max}`)
             }
             return dayToFill
           }
-          console.log(`checking cache for ${min} - ${max}...`)
+          // console.log(`checking cache for ${min} - ${max}...`)
           const dayObj = await cacheRetrieve(db, indices, min, max, missHandler)
           if (dayObj !== dayToFill) Object.assign(dayToFill, dayObj)
           return resolve(await fillDay(dayToFill, dateKey))

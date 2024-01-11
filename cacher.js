@@ -289,7 +289,7 @@ async function getAttestationDuties(epoch, validatorIds) {
 }
 
 async function processEpoch(epoch, validatorIds) {
-  log(`Processing epoch ${epoch}`)
+  log(`Processing epoch ${epoch} with ${validatorIds.size} relevant validators`)
 
   if (!validatorIds.size) {
     console.warn(`${epoch} has no relevant active validators`)

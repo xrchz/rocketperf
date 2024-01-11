@@ -632,6 +632,10 @@ async function validatorPerformance(db, validatorIndex, fromSlot, toSlot) {
   return await cacheRetrieve(db, [validatorIndex], fromSlot, toSlot, missHandler)
 }
 
+const selectedDetailsDiv = document.createElement('div')
+selectedDetailsDiv.id = 'selectedDetails'
+selectedDetailsDiv.classList.add('hidden')
+
 const updatePerformanceDetails = async () => {
   const fromValue = parseInt(fromSlot.value)
   const toValue = parseInt(toSlot.value)
@@ -651,7 +655,7 @@ const updatePerformanceDetails = async () => {
     async function fillDay(dayObj, dateKey) {
       console.log(`Filling ${dateKey}...`)
       addTotals(dayObj)
-      const day = dateKey.split('-').at(-1)
+      const [year, monthIndex, day] = dateKey.split('-')
       await waitForRender
       const dayDiv = document.getElementById(dateKey)
       dayDiv.firstElementChild.innerText = day
@@ -680,6 +684,27 @@ const updatePerformanceDetails = async () => {
         })
       )
       dayDiv.title = titleLines.join('\n')
+      const showSelectedDetails = () => {
+        const currentlySelected = selectedDetailsDiv.dataset.dateKey
+        if (currentlySelected == dateKey) {
+          selectedDetailsDiv.classList.add('hidden')
+          dayDiv.classList.remove('selected')
+          delete selectedDetailsDiv.dataset.dateKey
+          return
+        }
+        document.getElementById(currentlySelected)?.classList.remove('selected')
+        const ul = document.createElement('ul')
+        ul.append(...[`${day} ${monthNames[monthIndex]} ${year}:`].concat(titleLines).map(s => {
+          const li = document.createElement('li')
+          li.innerText = s
+          return li
+        }))
+        selectedDetailsDiv.replaceChildren(ul)
+        dayDiv.classList.add('selected')
+        selectedDetailsDiv.dataset.dateKey = dateKey
+        selectedDetailsDiv.classList.remove('hidden')
+      }
+      dayDiv.addEventListener('click', showSelectedDetails, {passive: true})
       dayDiv.classList.remove('loading')
       if (dayObj.proposals.duties)
         dayDiv.classList.add('proposer')
@@ -1328,8 +1353,8 @@ todoListHeader.innerText = 'TODO'
 const todoList = document.createElement('ul')
 todoList.append(...[
   "find + fix warnings due to multiple attempts to add the same key to the cache (or other source of Constraint Violation)",
-  "show tooltip + more details when clicking a day (e.g. proposers) - also, makes tooltips more visible on mobile. selected day text colour.",
   "add attestation accuracy and reward info",
+  "improve selected day details text and formatting",
   "make certain css colors (and maybe other styles) editable?",
   "disable add/sub buttons when they won't work?",
   "prevent moving from slider beyond to slider's value - capture mouse events?",
@@ -1381,10 +1406,12 @@ summarySection.append(
   summaryHeading,
   summaryDiv
 )
+
 const detailsSection = document.createElement('section')
 detailsSection.append(
   detailsHeading,
-  detailsDiv
+  detailsDiv,
+  selectedDetailsDiv
 )
 
 performanceSection.append(

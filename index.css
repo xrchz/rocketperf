@@ -192,8 +192,15 @@ div.day > span {
   text-align: center;
   width: 100%;
 }
+div.day.selected > span {
+  color: plum;
+}
 .hidden {
   display: none;
+}
+div#selectedDetails > ul {
+  list-style-type: none;
+  padding-left: 0;
 }
 
 section#developers {

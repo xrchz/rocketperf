@@ -91,6 +91,15 @@ div.dirRangeButtons.from {
 :is(#allSummaryTable, #summaryTable) > tr > td {
   text-align: right;
 }
+#allSummaryTable, #summaryTable {
+  border-collapse: collapse;
+}
+#summaryTable {
+  margin-top: 1em;
+}
+:is(#allSummaryTable, #summaryTable) > tr > :is(td, th) {
+  border: 1px solid;
+}
 footer {
   margin-top: 2em;
   display: flex;

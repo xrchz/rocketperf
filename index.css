@@ -192,6 +192,9 @@ div.day > span {
   text-align: center;
   width: 100%;
 }
+div.day.perfnil > span {
+  color: darkorange;
+}
 div.day.selected > span {
   color: plum;
 }

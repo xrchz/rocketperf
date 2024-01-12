@@ -1045,10 +1045,30 @@ for (const {name, slots} of timeIncrements) {
   toButtons.append(...makeAddSub(toSlot))
 }
 
+const toDayStartButton = document.createElement('input')
+const toDayEndButton = document.createElement('input')
+;[toDayStartButton, toDayEndButton].forEach(e => e.type = 'button')
+toDayStartButton.value = '⇤'
+toDayStartButton.title = 'Set to start of day'
+toDayEndButton.value = '⇥'
+toDayEndButton.title = 'Set to end of day'
+toDayStartButton.addEventListener('click', () => {
+  if (fromTime.value !== '00:00:11') {
+    fromTime.value = '00:00:11'
+    fromTime.dispatchEvent(new Event('change'))
+  }
+}, {passive: true})
+toDayEndButton.addEventListener('click', () => {
+  if (toTime.value !== '23:59:59') {
+    toTime.value = '23:59:59'
+    toTime.dispatchEvent(new Event('change'))
+  }
+}, {passive: true})
+
 const fromDateTime = document.createElement('div')
 const toDateTime = document.createElement('div')
-fromDateTime.append(fromDateLabel, fromTimeLabel)
-toDateTime.append(toDateLabel, toTimeLabel)
+fromDateTime.append(fromDateLabel, fromTimeLabel, toDayStartButton)
+toDateTime.append(toDateLabel, toTimeLabel, toDayEndButton)
 
 slotSelectionDiv.append(
   rangeButtons,

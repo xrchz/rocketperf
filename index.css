@@ -206,6 +206,13 @@ div#selectedDetails > ul {
   padding-left: 0;
 }
 
+div#style label {
+  display: flex;
+  align-items: center;
+  gap: 1em;
+  justify-content: space-around;
+}
+
 section#developers {
   max-height: 20em;
   max-width: 40em;

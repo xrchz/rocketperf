@@ -1351,26 +1351,27 @@ const todoListHeader = document.createElement('h2')
 todoListHeader.innerText = 'TODO'
 const todoList = document.createElement('ul')
 todoList.append(...[
-  "find + fix warnings due to multiple attempts to add the same key to the cache (or other source of Constraint Violation)",
   "add attestation accuracy and reward info",
-  "improve selected day details text and formatting",
-  "make certain css colors (and maybe other styles) editable?",
-  "disable add/sub buttons when they won't work?",
+  "include proposer in selected day details",
+  "disable add/sub buttons when they won't do anything?",
+  "disable to day end/start buttons when they won't do anything?",
+  "buttons to toggle or set include up or down from point in the list",
+  "find + fix warnings due to multiple attempts to add the same key to the cache (or other source of Constraint Violation)",
+  "improve selected day details formatting",
   "prevent moving from slider beyond to slider's value - capture mouse events?",
   "add volatility delay before responding to user input changes to selected minipools or slots (for checkboxes, spinners, sliders only)?",
-  "add buttons to zero out components of the time, e.g. go to start of day, go to start of week, go to start of month, etc.?",
   'server sends "update minimum/maximum slot" messages whenever finalized increases?',
-  "check (and handle) URL length limit? e.g. store on server for socketid (with ttl) when too long",
+  "add compact view (columns of all weeks in the year)?",
   "add copy for whole table?",
-  "buttons to toggle or set include up or down from point in the list",
-  'add tool for selecting minipools from the list by "painting"?',
-  "speed up compression/decompression of indices?",
+  "check (and handle) URL length limit? e.g. store on server for socketid (with ttl) when too long",
   "make weekday start configurable (Sun vs Mon)?",
-  "add selector for subperiod sizes (instead of year/month/day)?",
+  "speed up compression/decompression of indices?",
   "add NO portion of rewards separately from validator rewards? (need to track commission and borrow)",
   "look into execution layer rewards too? probably ask for more money to implement that",
+  "add timezone selection?",
+  "add selector for subperiod sizes (instead of year/month/day)?",
   "add free-form text selectors for times too?",
-  "add timezone selection?"
+  'add tool for selecting minipools from the list by "painting"?',
 ].map(x => {
     const li = document.createElement('li')
     li.innerText = x
@@ -1420,10 +1421,38 @@ performanceSection.append(
   detailsSection
 )
 
+const rgbToColor = rgb =>
+`#${rgb.slice('rgb('.length, -1).split(',').map(n => parseInt(n).toString(16).padStart(2, '0')).join('')}`
+
+const styleSection = document.createElement('section')
+const showStyleButton = styleSection.appendChild(document.createElement('input'))
+showStyleButton.value = 'choose colours'
+showStyleButton.type = 'button'
+const styleDiv = styleSection.appendChild(document.createElement('div'))
+styleDiv.id = 'style'
+styleDiv.classList.add('hidden')
+showStyleButton.addEventListener('click', () => styleDiv.classList.toggle('hidden'), {passive: true})
+const backgroundColourLabel = document.createElement('label')
+const backgroundColourInput = document.createElement('input')
+const foregroundColourLabel = document.createElement('label')
+const foregroundColourInput = document.createElement('input')
+backgroundColourLabel.append('background:', backgroundColourInput)
+foregroundColourLabel.append('foreground:', foregroundColourInput)
+;[backgroundColourInput, foregroundColourInput].forEach(e => e.type = 'color')
+backgroundColourInput.value = rgbToColor(window.getComputedStyle(body).getPropertyValue('background-color'))
+foregroundColourInput.value = rgbToColor(window.getComputedStyle(body).getPropertyValue('color'))
+backgroundColourInput.addEventListener('change', () => body.style.backgroundColor = backgroundColourInput.value, {passive: true})
+foregroundColourInput.addEventListener('change', () => body.style.color = foregroundColourInput.value, {passive: true})
+styleDiv.append(
+  backgroundColourLabel,
+  foregroundColourLabel
+)
+
 body.replaceChildren(
   header,
   entrySection,
   performanceSection,
+  styleSection,
   footer,
   devDiv
 )

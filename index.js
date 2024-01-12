@@ -1156,6 +1156,11 @@ summaryDiv.append(
 const detailsDiv = document.createElement('div')
 detailsDiv.id = 'details'
 
+const detailsInfo = document.createElement('p')
+detailsInfo.append(
+  'The colour of each day shows the fraction of duties completed (more green) or missed (more red). ',
+  'A day with no misses gets a green border. A day with a proposal gets a yellow border.'
+)
 const compareNumbers = (a,b) => a - b
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
@@ -1275,18 +1280,18 @@ infoP.append(
   'developed by ', authorLink, ' for ', grantLink
 )
 
-const devDiv = document.createElement('section')
-devDiv.id = 'developers'
-devDiv.classList.add('hidden')
+const devSection = document.createElement('section')
+devSection.id = 'developers'
+devSection.classList.add('hidden')
 
 const showDevButton = document.createElement('input')
 showDevButton.type = 'button'
 showDevButton.value = 'dev'
-showDevButton.addEventListener('click', () => devDiv.classList.toggle('hidden'), {passive: true})
+showDevButton.addEventListener('click', () => devSection.classList.toggle('hidden'), {passive: true})
 
 footer.append(infoP, codeLinkP, showDevButton)
 
-devDiv.appendChild(document.createElement('h1')).innerText = 'Developer Section'
+devSection.appendChild(document.createElement('h1')).innerText = 'Developer Section'
 const cacheDivHeader = document.createElement('h2')
 cacheDivHeader.innerText = 'Cache'
 const cachedKeysDiv = document.createElement('div')
@@ -1399,7 +1404,7 @@ todoList.append(...[
   })
 )
 
-devDiv.append(
+devSection.append(
   cacheDivHeader,
   cachedKeysDiv,
   todoListHeader,
@@ -1430,6 +1435,7 @@ summarySection.append(
 const detailsSection = document.createElement('section')
 detailsSection.append(
   detailsHeading,
+  detailsInfo,
   detailsDiv,
   selectedDetailsDiv
 )
@@ -1474,7 +1480,7 @@ body.replaceChildren(
   performanceSection,
   styleSection,
   footer,
-  devDiv
+  devSection
 )
 
 slotRangeLimitsDiv.querySelectorAll('input').forEach(

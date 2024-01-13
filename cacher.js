@@ -616,7 +616,8 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
         for (const validatorIndex of validatorIds.keys()) {
           if (!running) break
           const nextEpochKey = `${chainId}/validator/${validatorIndex}/${alreadyOverridden.has(validatorIndex) ? uptoKeyBase : uptoKey}`
-          if ((db.get(nextEpochKey) || startDefault) < nextEpoch) {
+          const currentValue = db.get(nextEpochKey)
+          if (!currentValue || currentValue < nextEpoch) {
             updated.push(validatorIndex)
             await db.put(nextEpochKey, nextEpoch)
           }
@@ -625,7 +626,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
           log(`Updated ${uptoKey} to ${nextEpoch} for ${updated.length} validators from ${updated.at(0)} to ${updated.at(-1)}`)
       }
       state.resolved = true
-      log(`Task for ${epoch} completed`)
+      log(`Task for ${epoch} completed (was pendingEpochs[${epochIndex}])`)
     }
     const fn = dutiesOnly ? getAttestationDuties : processEpoch
     tasks.push({

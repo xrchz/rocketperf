@@ -517,19 +517,6 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
   const uptoKey = `${uptoKeyBase}${startKey}`
   const startDefault = STANDARD_START_EPOCH ? 0 : OVERRIDE_START_EPOCH
 
-  const validatorNextEpochs = Array.from(validatorActivationEpochs.entries()).map(
-    ([validatorIndex, activationEpoch]) => [
-      validatorIndex,
-      Math.max(
-        db.get(`${chainId}/validator/${validatorIndex}/${uptoKey}`) ?? startDefault,
-        activationEpoch
-      )
-    ]
-  )
-
-  const startEpoch = arrayMin(validatorNextEpochs.map(([id, nextEpoch]) => nextEpoch))
-  log(`Calculated startEpoch for ${uptoKey} as ${startEpoch}`)
-
   const alreadyOverridden = new Set()
 
   if (!STANDARD_START_EPOCH) {
@@ -566,6 +553,21 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
       process.exit()
     }
   }
+
+  const validatorNextEpochs = Array.from(validatorActivationEpochs.entries()).map(
+    ([validatorIndex, activationEpoch]) => [
+      validatorIndex,
+      Math.max(
+        db.get(
+          `${chainId}/validator/${validatorIndex}/${alreadyOverridden.has(validatorIndex) ? uptoKeyBase : uptoKey}`
+        ) ?? startDefault,
+        activationEpoch
+      )
+    ]
+  )
+
+  const startEpoch = arrayMin(validatorNextEpochs.map(([id, nextEpoch]) => nextEpoch))
+  log(`Calculated startEpoch for ${uptoKey} as ${startEpoch}`)
 
   const finalEpoch = epochOfSlot(finalizedSlot - 1)
 

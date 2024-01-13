@@ -587,6 +587,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
 
   const epochsToProcess = Array.from(Array(finalEpoch - startEpoch + 1).keys()).map(x => startEpoch + x)
   const pendingEpochs = epochsToProcess.slice()
+  let pendingEpochsLock = Promise.resolve()
 
   const processMsg = dutiesOnly ? 'attestation duties' : 'remaining data'
 
@@ -608,8 +609,14 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
     const validatorIds = getValidatorsIdsForEpoch(validatorNextEpochs, epoch)
     const state = {}
     const onCompletion = async () => {
-      const epochIndex = pendingEpochs.indexOf(epoch)
-      pendingEpochs.splice(epochIndex, 1)
+      const epochIndex = await pendingEpochsLock.then(() => {
+        pendingEpochsLock = new Promise(resolve => {
+          const epochIndex = pendingEpochs.indexOf(epoch)
+          pendingEpochs.splice(epochIndex, 1)
+          return resolve(epochIndex)
+        })
+        return pendingEpochsLock
+      })
       if (epochIndex == 0) {
         const updated = []
         const nextEpoch = epoch + 1

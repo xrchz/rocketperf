@@ -550,7 +550,8 @@ function renderCalendar(data) {
       const monthObj = yearObj[month]
       const days = Object.keys(monthObj).map(k => parseInt(k))
       const spacerDays = days[0] - 1
-      const monthSpacerDays = new Date(`${year}-${month + 1}-1`).getUTCDay()
+      const monthStr = (month + 1).toString().padStart(2, '0')
+      const monthSpacerDays = new Date(`${year}-${monthStr}-01`).getUTCDay()
       for (const spacerDay of Array(monthSpacerDays + spacerDays).fill()) {
         const dayDiv = monthDiv.appendChild(document.createElement('div'))
         dayDiv.classList.add('day', 'spacer')

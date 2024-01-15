@@ -15,7 +15,13 @@ import { db, log, provider, chainId, beaconRpcUrl, nullAddress, slotsPerEpoch,
 
 const app = express()
 
-app.use(helmet())
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      'connect-src': ["'self'", 'wss:']
+    }
+  }
+}))
 
 // when obtaining the certificate:
 // app.use('/.well-known', express.static('.well-known'))

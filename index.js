@@ -1451,11 +1451,11 @@ const rgbToColor = rgb =>
 `#${rgb.slice('rgb('.length, -1).split(',').map(n => parseInt(n).toString(16).padStart(2, '0')).join('')}`
 
 const styleSection = document.createElement('section')
+styleSection.id = 'style'
 const showStyleButton = styleSection.appendChild(document.createElement('input'))
 showStyleButton.value = 'choose colours'
 showStyleButton.type = 'button'
 const styleDiv = styleSection.appendChild(document.createElement('div'))
-styleDiv.id = 'style'
 styleDiv.classList.add('hidden')
 showStyleButton.addEventListener('click', () => styleDiv.classList.toggle('hidden'), {passive: true})
 const backgroundColourLabel = document.createElement('label')

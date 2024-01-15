@@ -206,7 +206,11 @@ div#selectedDetails > ul {
   padding-left: 0;
 }
 
-div#style label {
+section#style {
+  margin-top: 2em;
+}
+
+section#style > div label {
   display: flex;
   align-items: center;
   gap: 1em;

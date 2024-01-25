@@ -239,11 +239,16 @@ const getValidatorsIdsForEpoch = (validatorNextEpochs, epoch) => new Set(
   )
 )
 
-const rewardsOptionsForEpoch = (validatorIds) => ({
-  method: 'POST',
-  headers: {'Content-Type': 'application/json'},
-  body: JSON.stringify(Array.from(validatorIds.keys()))
-})
+const postOptionsForEpoch = (validatorIds) => {
+  const ids = Array.from(validatorIds.keys())
+  const options = {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(ids)
+  }
+  const wrapped = {...options, body: JSON.stringify({ids})}
+  return {postOptions: options, wrappedPostOptions: wrapped}
+}
 
 let processedMinipoolCount = 0
 
@@ -309,7 +314,7 @@ async function processEpoch(epoch, validatorIds) {
     return
   }
 
-  const rewardsOptions = rewardsOptionsForEpoch(validatorIds)
+  const {postOptions, wrappedPostOptions} = postOptionsForEpoch(validatorIds)
 
   const firstSlotInEpoch = epoch * slotsPerEpoch
 
@@ -406,7 +411,7 @@ async function processEpoch(epoch, validatorIds) {
       const syncRewardsUrl = new URL(
         `${beaconRpcUrl}/eth/v1/beacon/rewards/sync_committee/${searchSlot}`
       )
-      const syncRewards = await tryfetch(syncRewardsUrl, rewardsOptions).then(async res => {
+      const syncRewards = await tryfetch(syncRewardsUrl, postOptions).then(async res => {
         if (res.status !== 200)
           await cleanupThenError(`Got ${res.status} fetching sync rewards @ ${searchSlot}: ${await res.text()}`)
         const json = await res.json()
@@ -445,27 +450,27 @@ async function processEpoch(epoch, validatorIds) {
   const attestationRewardsUrl = new URL(
     `${beaconRpcUrl}/eth/v1/beacon/rewards/attestations/${epoch}`
   )
-  const attestationRewards = await tryfetch(attestationRewardsUrl, rewardsOptions).then(async res => {
+  const attestationRewards = await tryfetch(attestationRewardsUrl, postOptions).then(async res => {
     if (res.status !== 200)
       await cleanupThenError(`Got ${res.status} fetching ${attestationRewardsUrl}: ${await res.text()}`)
     const json = await res.json()
     return json.data
+  })
+  const effectiveBalancesUrl = new URL(
+    `${beaconRpcUrl}/eth/v1/beacon/states/${firstSlotInEpoch}/validators`
+  )
+  const effectiveBalances = await tryfetch(effectiveBalancesUrl, wrappedPostOptions).then(async res => {
+    if (res.status !== 200)
+      await cleanupThenError(`Got ${res.status} fetching ${effectiveBalancesUrl}: ${await res.text()}`)
+    const json = await res.json()
+    return new Map(json.data.map(({index, validator: {effective_balance}}) => [index, effective_balance]))
   })
   for (const {validator_index, head, target, source, inactivity} of attestationRewards.total_rewards) {
     if (!running) break
     const attestationKey = `${chainId}/validator/${validator_index}/attestation/${epoch}`
     const attestation = db.get(attestationKey)
     if (attestation && !('reward' in attestation && 'ideal' in attestation)) {
-      const effectiveBalanceUrl = new URL(
-        `/eth/v1/beacon/states/${firstSlotInEpoch}/validators/${validator_index}`,
-        beaconRpcUrl
-      )
-      const effectiveBalance = await tryfetch(effectiveBalanceUrl).then(async res => {
-        if (res.status !== 200)
-          throw new Error(`Got ${res.status} fetching effective balance in ${firstSlotInEpoch} for ${validator_index}: ${await res.text()}`)
-        const json = await res.json()
-        return json.data.validator.effective_balance
-      })
+      const effectiveBalance = effectiveBalances.get(validator_index)
       attestation.reward = {head, target, source, inactivity}
       const ideal = attestationRewards.ideal_rewards.find(x => x.effective_balance === effectiveBalance)
       if (!ideal) await cleanupThenError(`Could not get ideal rewards for ${firstSlotInEpoch} ${validator_index} with ${effectiveBalance}`)

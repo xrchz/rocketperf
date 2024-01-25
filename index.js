@@ -1388,6 +1388,7 @@ const todoListHeader = document.createElement('h2')
 todoListHeader.innerText = 'TODO'
 const todoList = document.createElement('ul')
 todoList.append(...[
+  "handle (exclude) entites with 'none' validator index",
   "add attestation accuracy and reward info",
   "include proposer in selected day details",
   "disable add/sub buttons when they won't do anything?",

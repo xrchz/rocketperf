@@ -125,11 +125,11 @@ async function updateMinipoolPubkeys() {
         const currentStatus = await currentMinipool.getStatus()
         const pendingStatus = await pendingMinipool.getStatus()
         if (currentStatus == pendingStatus)
-          throw new Error(`Duplicate minipools with status ${currentStatus} for ${pubkey}: ${minipoolAddress} vs ${currentEntry}`)
+          await cleanupThenError(`Duplicate minipools with status ${currentStatus} for ${pubkey}: ${minipoolAddress} vs ${currentEntry}`)
         const activeAddress = currentStatus == statusDissolved ? minipoolAddress :
                               pendingStatus == statusDissolved ? currentEntry : null
         if (!activeAddress)
-          throw new Error(`Duplicate minipools for ${pubkey} with neither dissolved: ${minipoolAddress} vs ${currentEntry}`)
+          await cleanupThenError(`Duplicate minipools for ${pubkey} with neither dissolved: ${minipoolAddress} vs ${currentEntry}`)
         log(`Found duplicate minipools for ${pubkey}: ${minipoolAddress} vs ${currentEntry}. Keeping ${activeAddress}.`)
         minipoolsByPubkey.set(pubkey, activeAddress)
       }
@@ -176,7 +176,7 @@ async function getActivationInfo(validatorIndex) {
     const json = await res.json()
     const epoch = parseInt(json?.data?.validator?.activation_epoch)
     if (!(0 <= epoch))
-      throw new Error(`Failed to get activation_epoch for ${validatorIndex}`)
+      await cleanupThenError(`Failed to get activation_epoch for ${validatorIndex}`)
     if (epoch == FAR_FUTURE_EPOCH)
       log(`Skipping setting unknown activation epoch for ${validatorIndex}`)
     else {
@@ -189,11 +189,11 @@ async function getActivationInfo(validatorIndex) {
     const minipoolAddress = getMinipoolByPubkey(pubkey)
     const minipoolExists = await rocketMinipoolManager.getMinipoolExists(minipoolAddress)
     if (!minipoolExists)
-      throw new Error(`Validator ${validatorIndex} (${pubkey}) has no corresponding minipool (${minipoolAddress})`)
+      await cleanupThenError(`Validator ${validatorIndex} (${pubkey}) has no corresponding minipool (${minipoolAddress})`)
     const minipool = new ethers.Contract(minipoolAddress, minipoolAbi, provider)
     if (await minipool.getStatus().then(s => s == statusStaking)) {
       if (await minipool.getVacant().catch(revert => false))
-        throw new Error(`Minipool ${minipoolAddress} (validator ${validatorIndex}) is vacant`)
+        await cleanupThenError(`Minipool ${minipoolAddress} (validator ${validatorIndex}) is vacant`)
       const promotions = await minipool.queryFilter('MinipoolPromoted')
       if (promotions.length) {
         if (promotions.length !== 1)
@@ -258,7 +258,7 @@ async function getAttestationDuties(epoch, validatorIds) {
 
   const committees = await tryfetch(attestationDutiesUrl).then(async res => {
     if (res.status !== 200)
-      throw new Error(`Got ${res.status} fetching attestation duties for ${epoch}: ${await res.text()}`)
+      await cleanupThenError(`Got ${res.status} fetching attestation duties for ${epoch}: ${await res.text()}`)
     const json = await res.json()
     return json.data
   })
@@ -282,7 +282,7 @@ async function getAttestationDuties(epoch, validatorIds) {
   }
 
   if (logAddedList.length != logAddedSet.size)
-    throw new Error(`Unexpected difference in logAdded: ${logAddedList.length} vs ${logAddedSet.size}`)
+    await cleanupThenError(`Unexpected difference in logAdded: ${logAddedList.length} vs ${logAddedSet.size}`)
   if (logAddedSet.size)
     log(`Added ${logAddedSet.size} attestation duties in epoch ${epoch} between ${arrayMin(logAddedList.slice())} and ${arrayMax(logAddedList)}`)
 }
@@ -309,7 +309,7 @@ async function processEpoch(epoch, validatorIds) {
     if (res.status === 400 && await res.json().then(j => j.message.endsWith("not activated for Altair")))
       return []
     if (res.status !== 200)
-      throw new Error(`Got ${res.status} fetching sync duties for ${epoch}: ${await res.text()}`)
+      await cleanupThenError(`Got ${res.status} fetching ${syncDutiesUrl}: ${await res.text()}`)
     const json = await res.json()
     return json.data.validators
   })
@@ -330,10 +330,10 @@ async function processEpoch(epoch, validatorIds) {
   if (!running) return
   log(`Getting attestations and syncs for ${epoch}`)
 
-  validatorIds.forEach(validatorIndex => {
+  for (const validatorIndex of validatorIds) {
     if (!(epoch <= db.get(`${chainId}/validator/${validatorIndex}/dutiesEpoch`)))
-      throw new Error(`dutiesEpoch for ${validatorIndex} too low for ${epoch}`)
-  })
+      await cleanupThenError(`dutiesEpoch for ${validatorIndex} too low for ${epoch}`)
+  }
 
   const validatorIdsArray = Array.from(validatorIds.keys())
 
@@ -349,7 +349,7 @@ async function processEpoch(epoch, validatorIds) {
         return { attestations: [] }
       }
       if (res.status !== 200)
-        throw new Error(`Got ${res.status} fetching blinded block @ ${searchSlot}: ${await res.text()}`)
+        await cleanupThenError(`Got ${res.status} fetching blinded block @ ${searchSlot}: ${await res.text()}`)
       const json = await res.json()
       return json.data.message.body
     })
@@ -394,7 +394,7 @@ async function processEpoch(epoch, validatorIds) {
       )
       const syncRewards = await tryfetch(syncRewardsUrl, rewardsOptions).then(async res => {
         if (res.status !== 200)
-          throw new Error(`Got ${res.status} fetching sync rewards @ ${searchSlot}: ${await res.text()}`)
+          await cleanupThenError(`Got ${res.status} fetching sync rewards @ ${searchSlot}: ${await res.text()}`)
         const json = await res.json()
         return json.data
       })
@@ -403,7 +403,7 @@ async function processEpoch(epoch, validatorIds) {
         const sync = db.get(syncKey)
         if (!sync) {
           if (reward !== '0')
-            throw new Error(`Non-zero reward ${reward} but no sync object at ${syncKey}`)
+            await cleanupThenError(`Non-zero reward ${reward} but no sync object at ${syncKey}`)
           continue
         }
         if (sync.rewards.every(({slot}) => slot != searchSlot)) {
@@ -433,7 +433,7 @@ async function processEpoch(epoch, validatorIds) {
   )
   const attestationRewards = await tryfetch(attestationRewardsUrl, rewardsOptions).then(async res => {
     if (res.status !== 200)
-      throw new Error(`Got ${res.status} fetching attestation rewards in epoch ${epoch}: ${await res.text()}`)
+      await cleanupThenError(`Got ${res.status} fetching ${attestationRewardsUrl}: ${await res.text()}`)
     const json = await res.json()
     return json.data
   })
@@ -454,7 +454,7 @@ async function processEpoch(epoch, validatorIds) {
       })
       attestation.reward = {head, target, source, inactivity}
       const ideal = attestationRewards.ideal_rewards.find(x => x.effective_balance === effectiveBalance)
-      if (!ideal) throw new Error(`Could not get ideal rewards for ${firstSlotInEpoch} ${validator_index} with ${effectiveBalance}`)
+      if (!ideal) await cleanupThenError(`Could not get ideal rewards for ${firstSlotInEpoch} ${validator_index} with ${effectiveBalance}`)
       attestation.ideal = {}
       for (const key of Object.keys(attestation.reward))
         attestation.ideal[key] = ideal[key]
@@ -473,7 +473,7 @@ async function processEpoch(epoch, validatorIds) {
   )
   const proposals = await tryfetch(proposalUrl).then(async res => {
     if (res.status !== 200)
-      throw new Error(`Got ${res.status} fetching proposal duties for epoch ${epoch}: ${await res.text()}`)
+      await cleanupThenError(`Got ${res.status} fetching proposal duties for epoch ${epoch}: ${await res.text()}`)
     const json = await res.json()
     return json.data
   })
@@ -495,7 +495,7 @@ async function processEpoch(epoch, validatorIds) {
           const reward = await response.json().then(j => j.data.total)
           proposal.reward = reward
         }
-        else throw new Error(`Got ${response.status} fetching block rewards @ ${slot}`)
+        else await cleanupThenError(`Got ${response.status} fetching block rewards @ ${slot}`)
         await db.put(proposalKey, proposal)
       }
     }
@@ -679,8 +679,10 @@ async function processEpochs() {
 }
 
 const tryfetch = (...args) => fetch(...args).catch((e) => cleanup().then(() => { throw e }))
+const cleanupThenError = (s) => cleanup().then(() => { throw new Error(s) })
 
 async function cleanup() {
+  if (!running) return
   running = false
   interruptArrayPromises()
   log(`Removing listeners...`)

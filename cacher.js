@@ -165,6 +165,15 @@ if (STANDARD_START_EPOCH && !DUTIES_ONLY) {
   })
 }
 
+const fixAnkrPubkeyFromIndex = new Map([
+  ['1110070', '0xa79f1abda7e2c1fa37736a00e3da97d7d4c988a3293abff97bf18a946778a22c6de1778d67490a0ff2a01b9842923ec8'],
+  ['1117590', '0xb26b3440bfac9b7adbeb8ffa2d3351d6bf8b3c0cea8cd7e6d02da46c51f7f30b6cddbab7c7560b9810b990d044404758'],
+  ['1117589', '0xab7f239b5d85921249e0d587a0fea19e62b609e00b366403f32d8be179e1f9d0120c37ee34e1af2523d86cfde0e2ec1c'],
+  ['1129625', '0xaae335e3f300e81b3e67fc2695c94d894cc8ab51ed930e7f4c408d0f6ca125f513365b13026c94661533287409ff6871'],
+  ['1139387', '0x979b5256b865366b40f25ca537cd3caac31e5fb2a386a79d94a046f5f7aba507a19290b0cfb400f8824e038daa1c692b'],
+  ['1139388', '0xadf733840e05ffbb23dd354a0f090eba1c8569db2c1824bbeb9b2703aae6ea12c4810bb1d20b42edcba7494234370d1a']
+])
+
 async function getActivationInfo(validatorIndex) {
   const key = `${chainId}/validator/${validatorIndex}/activationInfo`
   const activationInfo = db.get(key) ?? {}
@@ -190,7 +199,7 @@ async function getActivationInfo(validatorIndex) {
     }
   }
   if (!('promoted' in activationInfo)) {
-    const pubkey = await getPubkeyFromIndex(validatorIndex)
+    const pubkey = await getPubkeyFromIndex(validatorIndex) || fixAnkrPubkeyFromIndex.get(validatorIndex)
     const minipoolAddress = getMinipoolByPubkey(pubkey)
     const minipoolExists = await rocketMinipoolManager.getMinipoolExists(minipoolAddress)
     if (!minipoolExists)

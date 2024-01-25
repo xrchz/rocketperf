@@ -171,7 +171,7 @@ async function getActivationInfo(validatorIndex) {
   let changed = false
   if (!('beacon' in activationInfo)) {
     const path = `/eth/v1/beacon/states/finalized/validators/${validatorIndex}`
-    const url = new URL(path, beaconRpcUrl)
+    const url = new URL(`${beaconRpcUrl}${path}`)
     const res = await tryfetch(url)
     const json = await res.json()
     const epoch = parseInt(json?.data?.validator?.activation_epoch)
@@ -244,8 +244,7 @@ async function getAttestationDuties(epoch, validatorIds) {
   const firstSlotInEpoch = epoch * slotsPerEpoch
 
   const attestationDutiesUrl = new URL(
-    `/eth/v1/beacon/states/${firstSlotInEpoch}/committees?epoch=${epoch}`,
-    beaconRpcUrl
+    `${beaconRpcUrl}/eth/v1/beacon/states/${firstSlotInEpoch}/committees?epoch=${epoch}`
   )
 
   if (!running) return
@@ -304,8 +303,7 @@ async function processEpoch(epoch, validatorIds) {
   log(`Getting sync duties for ${epoch}`)
 
   const syncDutiesUrl = new URL(
-    `/eth/v1/beacon/states/${firstSlotInEpoch}/sync_committees?epoch=${epoch}`,
-    beaconRpcUrl
+    `${beaconRpcUrl}/eth/v1/beacon/states/${firstSlotInEpoch}/sync_committees?epoch=${epoch}`
   )
   const syncValidators = await tryfetch(syncDutiesUrl).then(async res => {
     if (res.status === 400 && await res.json().then(j => j.message.endsWith("not activated for Altair")))
@@ -343,8 +341,7 @@ async function processEpoch(epoch, validatorIds) {
   let searchSlot = firstSlotInEpoch
   while (running && searchSlot < firstSlotInEpoch + slotsPerEpoch) {
     const blockUrl = new URL(
-      `/eth/v1/beacon/blinded_blocks/${searchSlot}`,
-      beaconRpcUrl
+      `${beaconRpcUrl}/eth/v1/beacon/blinded_blocks/${searchSlot}`
     )
     const blockData = await tryfetch(blockUrl).then(async res => {
       if (res.status === 404) {
@@ -393,8 +390,7 @@ async function processEpoch(epoch, validatorIds) {
       )
 
       const syncRewardsUrl = new URL(
-        `/eth/v1/beacon/rewards/sync_committee/${searchSlot}`,
-        beaconRpcUrl
+        `${beaconRpcUrl}/eth/v1/beacon/rewards/sync_committee/${searchSlot}`
       )
       const syncRewards = await tryfetch(syncRewardsUrl, rewardsOptions).then(async res => {
         if (res.status !== 200)
@@ -433,8 +429,7 @@ async function processEpoch(epoch, validatorIds) {
 
   logAdded.splice(0, Infinity)
   const attestationRewardsUrl = new URL(
-    `/eth/v1/beacon/rewards/attestations/${epoch}`,
-    beaconRpcUrl
+    `${beaconRpcUrl}/eth/v1/beacon/rewards/attestations/${epoch}`
   )
   const attestationRewards = await tryfetch(attestationRewardsUrl, rewardsOptions).then(async res => {
     if (res.status !== 200)
@@ -474,8 +469,7 @@ async function processEpoch(epoch, validatorIds) {
   log(`Getting proposals for ${epoch}`)
 
   const proposalUrl = new URL(
-    `/eth/v1/validator/duties/proposer/${epoch}`,
-    beaconRpcUrl
+    `${beaconRpcUrl}/eth/v1/validator/duties/proposer/${epoch}`
   )
   const proposals = await tryfetch(proposalUrl).then(async res => {
     if (res.status !== 200)
@@ -489,7 +483,7 @@ async function processEpoch(epoch, validatorIds) {
       const proposalKey = `${chainId}/validator/${validator_index}/proposal/${slot}`
       const proposal = db.get(proposalKey) || {}
       if (!('reward' in proposal)) {
-        const proposalRewardUrl = new URL(`/eth/v1/beacon/rewards/blocks/${slot}`, beaconRpcUrl)
+        const proposalRewardUrl = new URL(`${beaconRpcUrl}/eth/v1/beacon/rewards/blocks/${slot}`)
         const response = await tryfetch(proposalRewardUrl)
         if (response.status === 404) {
           log(`Adding missed proposal for ${validator_index} @ ${slot}`)

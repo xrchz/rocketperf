@@ -86,7 +86,7 @@ export const epochOfSlot = (slot) => Math.floor(slot / slotsPerEpoch)
 
 export const getFinalizedSlot = () =>
   fetch(
-    new URL('/eth/v1/beacon/blinded_blocks/finalized', beaconRpcUrl)
+    new URL(`${beaconRpcUrl}/eth/v1/beacon/blinded_blocks/finalized`)
   ).then(res => res.json().then(j => j.data.message.slot))
 
 export async function getIndexFromPubkey(pubkey) {
@@ -94,7 +94,7 @@ export async function getIndexFromPubkey(pubkey) {
   const cached = db.get(key)
   if (isNaN(parseInt(cached))) {
     const path = `/eth/v1/beacon/states/finalized/validators/${pubkey}`
-    const url = new URL(path, beaconRpcUrl)
+    const url = new URL(`${beaconRpcUrl}${path}`)
     const response = await fetch(url)
     if (response.status === 404) {
       log(`Validator index missing for pubkey ${pubkey}`)
@@ -112,7 +112,7 @@ export async function getIndexFromPubkey(pubkey) {
 
 export async function getPubkeyFromIndex(index) {
   const path = `/eth/v1/beacon/states/finalized/validators/${index}`
-  const url = new URL(path, beaconRpcUrl)
+  const url = new URL(`${beaconRpcUrl}${path}`)
   const response = await fetch(url)
   if (response.status === 404)
     return null

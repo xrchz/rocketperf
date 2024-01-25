@@ -173,7 +173,12 @@ async function getActivationInfo(validatorIndex) {
     const path = `/eth/v1/beacon/states/finalized/validators/${validatorIndex}`
     const url = new URL(`${beaconRpcUrl}${path}`)
     const res = await tryfetch(url)
-    const json = await res.json()
+    const text = await res.clone().text()
+    const json = text == 'not found' ? {data: {validator: {activation_epoch: FAR_FUTURE_EPOCH}}} :
+      await res.json().catch(e => cleanup().then(() => {
+        console.error(`Error getting JSON from ${url}`)
+        throw e
+      }))
     const epoch = parseInt(json?.data?.validator?.activation_epoch)
     if (!(0 <= epoch))
       await cleanupThenError(`Failed to get activation_epoch for ${validatorIndex}`)

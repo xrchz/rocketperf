@@ -331,6 +331,7 @@ async function processEpoch(epoch, validatorIds) {
   log(`Getting sync duties for ${epoch}`)
 
   const promises = []
+  const syncPromises = []
 
   const syncDutiesUrl = new URL(
     `${beaconRpcUrl}/eth/v1/beacon/states/${firstSlotInEpoch}/sync_committees?epoch=${epoch}`
@@ -352,7 +353,7 @@ async function processEpoch(epoch, validatorIds) {
         sync.position = position
         sync.missed = []
         sync.rewards = []
-        promises.push(db.put(syncKey, sync))
+        syncPromises.push(db.put(syncKey, sync))
       }
     }
   }
@@ -366,6 +367,11 @@ async function processEpoch(epoch, validatorIds) {
   }
 
   const validatorIdsArray = Array.from(validatorIds.keys())
+
+  const syncTimeKey = `putting sync duties for ${epoch}`
+  console.time(syncTimeKey)
+  await Promise.all(syncPromises)
+  console.timeEnd(syncTimeKey)
 
   const logAdded = []
   let searchSlot = firstSlotInEpoch

@@ -698,6 +698,14 @@ async function processEpochs() {
 }
 
 const tryfetch = (...args) => fetch(...args).catch((e) => cleanup().then(() => { throw e }))
+/*
+const tryfetch = (...args) => {
+  console.time(args[0])
+  const r = fetch(...args).catch((e) => cleanup().then(() => { throw e }))
+  console.timeEnd(args[0])
+  return r
+}
+*/
 const cleanupThenError = (s) => cleanup().then(() => { throw new Error(s) })
 
 async function cleanup() {

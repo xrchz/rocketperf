@@ -25,8 +25,8 @@ const DUTIES_ONLY = !!process.env.DUTIES_ONLY
 if (DUTIES_ONLY && !STANDARD_START_EPOCH)
   throw new Error('DUTIES_ONLY cannot use OVERRIDE_START_EPOCH')
 
-const OVERRIDE_FINAL_SLOT = parseInt(process.env.OVERRIDE_FINAL_SLOT)
-const STANDARD_FINAL_SLOT = isNaN(OVERRIDE_FINAL_SLOT)
+const OVERRIDE_FINAL_EPOCH = parseInt(process.env.OVERRIDE_FINAL_EPOCH)
+const STANDARD_FINAL_SLOT = isNaN(OVERRIDE_FINAL_EPOCH)
 
 function hexStringToBitvector(s) {
   const bitlist = []
@@ -703,7 +703,7 @@ async function processEpochs() {
     (numLeft) => log(`Getting activationInfo, ${numLeft} validators left`)
   )
 
-  const finalizedSlot = STANDARD_FINAL_SLOT ? await getFinalizedSlot() : OVERRIDE_FINAL_SLOT
+  const finalizedSlot = STANDARD_FINAL_SLOT ? await getFinalizedSlot() : OVERRIDE_FINAL_EPOCH * slotsPerEpoch
   if (STANDARD_START_EPOCH) await processEpochsLoop(finalizedSlot, true)
   if (!DUTIES_ONLY) await processEpochsLoop(finalizedSlot, false)
 }

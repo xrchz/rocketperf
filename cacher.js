@@ -146,8 +146,10 @@ async function updateMinipoolPubkeys() {
     log(`Got pubkeys for ${minipoolsByPubkeyCount} minipools`)
   }
   if (minipoolCount != prevMinipoolCount) {
-    await db.put(`${chainId}/minipoolsByPubkeyCount`, minipoolsByPubkeyCount)
-    await db.put(`${chainId}/minipoolsByPubkey`, minipoolsByPubkey)
+    await db.transaction(() => {
+      db.put(`${chainId}/minipoolsByPubkeyCount`, minipoolsByPubkeyCount)
+      db.put(`${chainId}/minipoolsByPubkey`, minipoolsByPubkey)
+    })
   }
 }
 
@@ -553,8 +555,10 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
             ' and has no overrideNextEpoch so will use standard')
         log(`Standard nextEpoch for ${validatorIndex}, ${standardNextEpoch}, has reached ${OVERRIDE_START_EPOCH}${actionMsg}`)
         if (overrideNextEpoch > standardNextEpoch) {
-          await db.put(standardKey, overrideNextEpoch)
-          await db.remove(overrideKey)
+          await db.transaction(() => {
+            db.put(standardKey, overrideNextEpoch)
+            db.remove(overrideKey)
+          })
           changed = true
         }
         else if (overrideNextEpoch) {

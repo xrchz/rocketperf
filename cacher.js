@@ -708,15 +708,15 @@ async function processEpochs() {
   if (!DUTIES_ONLY) await processEpochsLoop(finalizedSlot, false)
 }
 
-const tryfetch = (...args) => fetch(...args).catch((e) => cleanup().then(() => { throw e }))
-/*
-const tryfetch = (...args) => {
-  console.time(args[0])
-  const r = fetch(...args).catch((e) => cleanup().then(() => { throw e }))
-  console.timeEnd(args[0])
-  return r
-}
-*/
+const tryfetch = parseInt(process.env.LOG_FETCH) ?
+  (...args) => {
+    console.time(args[0])
+    const r = fetch(...args).catch((e) => cleanup().then(() => { throw e }))
+    console.timeEnd(args[0])
+    return r
+  } :
+  (...args) => fetch(...args).catch((e) => cleanup().then(() => { throw e }))
+
 const cleanupThenError = (s) => cleanup().then(() => { throw new Error(s) })
 
 async function cleanup() {

@@ -331,7 +331,7 @@ async function processEpoch(epoch, validatorIds) {
   log(`Getting sync duties for ${epoch}`)
 
   const promises = []
-  const syncPromises = []
+  const syncUpdates = new Map()
 
   const syncDutiesUrl = new URL(
     `${beaconRpcUrl}/eth/v1/beacon/states/${firstSlotInEpoch}/sync_committees?epoch=${epoch}`
@@ -353,7 +353,7 @@ async function processEpoch(epoch, validatorIds) {
         sync.position = position
         sync.missed = []
         sync.rewards = []
-        syncPromises.push(db.put(syncKey, sync))
+        syncUpdates.set(syncKey, sync)
       }
     }
   }
@@ -367,11 +367,6 @@ async function processEpoch(epoch, validatorIds) {
   }
 
   const validatorIdsArray = Array.from(validatorIds.keys())
-
-  const syncTimeKey = `putting sync duties for ${epoch}`
-  console.time(syncTimeKey)
-  await Promise.all(syncPromises)
-  console.timeEnd(syncTimeKey)
 
   const logAdded = []
   let searchSlot = firstSlotInEpoch
@@ -410,10 +405,10 @@ async function processEpoch(epoch, validatorIds) {
       const syncBits = hexStringToBitvector(blockData.sync_aggregate.sync_committee_bits)
       validatorIdsArray.forEach(validatorIndex => {
         const syncKey = `${chainId}/validator/${validatorIndex}/sync/${epoch}`
-        const sync = db.get(syncKey)
+        const sync = syncUpdates.get(syncKey) || db.get(syncKey)
         if (sync && !syncBits[sync.position] && !sync.missed.includes(searchSlot)) {
           sync.missed.push(searchSlot)
-          promises.push(db.put(syncKey, sync))
+          syncUpdates.set(syncKey, sync)
         }
       })
 
@@ -428,7 +423,7 @@ async function processEpoch(epoch, validatorIds) {
       })
       for (const {validator_index, reward} of syncRewards) {
         const syncKey = `${chainId}/validator/${validator_index}/sync/${epoch}`
-        const sync = db.get(syncKey)
+        const sync = syncUpdates.get(syncKey) || db.get(syncKey)
         if (!sync) {
           if (reward !== '0')
             await cleanupThenError(`Non-zero reward ${reward} but no sync object at ${syncKey}`)
@@ -438,7 +433,7 @@ async function processEpoch(epoch, validatorIds) {
           // log(`Adding sync reward for ${searchSlot} for validator ${validator_index}: ${reward}`)
           logAdded.push({slot: searchSlot, validatorIndex: validator_index, reward})
           sync.rewards.push({slot: searchSlot, reward})
-          promises.push(db.put(syncKey, sync))
+          syncUpdates.set(syncKey, sync)
         }
       }
     }
@@ -451,6 +446,8 @@ async function processEpoch(epoch, validatorIds) {
     if (addedAttestations < logAdded.length)
       log(`Added ${logAdded.length - addedAttestations} sync rewards for ${epoch}`)
   }
+
+  syncUpdates.forEach((v, k) => promises.push(db.put(k, v)))
 
   if (!running) return
   log(`Getting attestation rewards for ${epoch}`)

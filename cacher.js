@@ -393,7 +393,7 @@ async function processEpoch(epoch, validatorIds) {
       validatorIdsArray.forEach(validatorIndex => {
         const attestationKey = `${chainId}/validator/${validatorIndex}/attestation/${attestationEpoch}`
         const attestation = db.get(attestationKey)
-        if (attestation?.slot == slot && attestation.index == index && !(attestation.attested?.slot <= searchSlot)) {
+        if (attestation?.slot == slot && attestation.index == index && (!attestation.attested || (searchSlot < attestation.attested.slot))) {
           if (attestedBits[attestation.position]) {
             attestation.attested = { slot: searchSlot, head: beacon_block_root, source, target }
             // log(`Adding attestation for ${slot} (${attestationEpoch}) for validator ${validatorIndex} @ ${searchSlot}`)

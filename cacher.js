@@ -368,6 +368,8 @@ async function processEpoch(epoch, validatorIds) {
 
   const validatorIdsArray = Array.from(validatorIds.keys())
 
+  const attestationUpdates = new Map()
+
   const logAdded = []
   let searchSlot = firstSlotInEpoch
   while (running && searchSlot < firstSlotInEpoch + slotsPerEpoch) {
@@ -396,7 +398,7 @@ async function processEpoch(epoch, validatorIds) {
             attestation.attested = { slot: searchSlot, head: beacon_block_root, source, target }
             // log(`Adding attestation for ${slot} (${attestationEpoch}) for validator ${validatorIndex} @ ${searchSlot}`)
             logAdded.push({slot: searchSlot, validatorIndex, attestationEpoch})
-            promises.push(db.put(attestationKey, attestation))
+            attestationUpdates.set(attestationKey, attestation)
           }
         }
       })
@@ -474,7 +476,7 @@ async function processEpoch(epoch, validatorIds) {
   for (const {validator_index, head, target, source, inactivity} of attestationRewards.total_rewards) {
     if (!running) break
     const attestationKey = `${chainId}/validator/${validator_index}/attestation/${epoch}`
-    const attestation = db.get(attestationKey)
+    const attestation = attestationUpdates.get(attestationKey) || db.get(attestationKey)
     if (attestation && !('reward' in attestation && 'ideal' in attestation)) {
       const effectiveBalance = effectiveBalances.get(validator_index)
       attestation.reward = {head, target, source, inactivity}
@@ -485,10 +487,12 @@ async function processEpoch(epoch, validatorIds) {
         attestation.ideal[key] = ideal[key]
       // log(`Adding attestation reward for epoch ${epoch} for validator ${validator_index}: ${Object.entries(attestation.reward)} / ${Object.entries(attestation.ideal)}`)
       logAdded.push(validator_index)
-      promises.push(db.put(attestationKey, attestation))
+      attestationUpdates.set(attestationKey, attestation)
     }
   }
   log(`Added ${logAdded.length} attestation rewards for epoch ${epoch}`)
+
+  attestationUpdates.forEach((v, k) => promises.push(db.put(k, v)))
 
   if (!running) return
   log(`Getting proposals for ${epoch}`)

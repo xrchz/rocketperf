@@ -43,22 +43,28 @@ const attestedRe = /Missed|Attested/
 const checkAttestationForEpoch = async (validatorIndex, epoch) => {
   const activationEpoch = await getActivationEpoch(validatorIndex)
   const numRecords = await getNumRecords(validatorIndex)
-  const n = numRecords - (epoch - activationEpoch + 1)
-  const path = `/validator/${validatorIndex}/attestations?draw=1&start=${n}&length=1`
+  const n = numRecords - (epoch - activationEpoch + 3)
+  const path = `/validator/${validatorIndex}/attestations?draw=1&start=${n}`
   const json = await fetchBeaconchain(path)
   if (!(json.data?.length >= 1))
     throw new Error(`Got bad data for ${path}: ${JSON.stringify(json)}`)
-  const item = json.data[0]
-  if (!(item?.length >= 4))
-    throw new Error(`Got bad item for ${path}: ${JSON.stringify(json)}`)
-  const [, foundEpoch] = epochRe.exec(item[0]) || []
-  if (foundEpoch != epoch)
-    throw new Error(`Failed to get ${epoch} from ${path} (got ${foundEpoch} from ${item[0]})`)
-  const [, slot] = slotRe.exec(item[1])
-  const [attestedStr] = attestedRe.exec(item[2])
-  const attested = attestedStr == 'Attested'
-  const attestedSlot = attested ? slotRe.exec(item[4])[1] : undefined
-  return {slot, attested, attestedSlot}
+  const indices = Array.from(Array(Math.min(4, json.data.length)).keys())
+  indices.reverse()
+  for (const i of indices) {
+    const item = json.data[i]
+    if (!(item?.length >= 4))
+      throw new Error(`Got bad item for ${path}: ${JSON.stringify(json)}`)
+    const [, foundEpoch] = epochRe.exec(item[0]) || []
+    if (foundEpoch != epoch) {
+      if (i) continue
+      else throw new Error(`Failed to get ${epoch} from ${path} (got ${foundEpoch} from ${item[0]})`)
+    }
+    const [, slot] = slotRe.exec(item[1])
+    const [attestedStr] = attestedRe.exec(item[2])
+    const attested = attestedStr == 'Attested'
+    const attestedSlot = attested ? slotRe.exec(item[4])[1] : undefined
+    return {slot, attested, attestedSlot}
+  }
 }
 
 while (true) {
@@ -74,7 +80,10 @@ while (true) {
       if (!nextEpoch || nextEpoch <= epoch) continue
       log(`Checking ${key}`)
       const attestation = db.get(key)
-      const {slot, attested, attestedSlot} = await checkAttestationForEpoch(validatorIndex, epoch)
+      const {slot, attested, attestedSlot} = await checkAttestationForEpoch(validatorIndex, epoch).catch((e) => {
+        if (e.message.startsWith('Failed')) return checkAttestationForEpoch(validatorIndex, epoch)
+        else throw e
+      })
       if (!!attestation.attested != attested)
         throw new Error(`Attested discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epochStr}`)
       if (attestation.slot != slot)

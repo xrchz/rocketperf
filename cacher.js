@@ -754,9 +754,18 @@ process.on('SIGINT', async () => {
   process.exit()
 })
 
-while (true) {
-  await processEpochs()
-  await new Promise(resolve =>
-    setTimeout(resolve, secondsPerSlot * slotsPerEpoch * 1000)
-  )
+if (process.env.FIXUP_EPOCHS) {
+  const epochs = process.env.FIXUP_EPOCHS.split(',').map(e => parseInt(e))
+  const validatorIds = new Set(process.env.FIXUP_VALIDATORS.split(','))
+  for (const epoch of epochs)
+    await processEpoch(epoch, validatorIds)
+  await cleanup()
+}
+else {
+  while (true) {
+    await processEpochs()
+    await new Promise(resolve =>
+      setTimeout(resolve, secondsPerSlot * slotsPerEpoch * 1000)
+    )
+  }
 }

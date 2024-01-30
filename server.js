@@ -337,8 +337,11 @@ io.on('connection', socket => {
         attestations.duties += 1
         if (!attestation.attested)
           attestations.missed += 1
-        for (const rewardType of ['head', 'target', 'source', 'inactivity'])
-          attestations.reward += BigInt(attestation.reward[rewardType])
+        for (const rewardType of ['head', 'target', 'source', 'inactivity']) {
+          if (typeof attestation.reward[rewardType] != 'string' && rewardType != 'inactivity')
+            throw new Error(`Missing ${rewardType} reward in ${JSON.stringify(attestation)}`)
+          attestations.reward += BigInt(attestation.reward[rewardType] || 0)
+        }
         attestations.slots.add(slot)
       }
 

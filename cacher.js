@@ -770,8 +770,9 @@ if (process.env.FIXUP_EPOCHS) {
 else {
   while (true) {
     await processEpochs()
-    await new Promise(resolve =>
-      setTimeout(resolve, secondsPerSlot * slotsPerEpoch * 1000)
-    )
+    if (STANDARD_FINAL_SLOT)
+      await new Promise(resolve =>
+        setTimeout(resolve, secondsPerSlot * slotsPerEpoch * 1000)
+      )
   }
 }

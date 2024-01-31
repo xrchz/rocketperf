@@ -13,8 +13,8 @@ const {timeToSlot, slotToTime} = timeSlotConvs(chainId)
 
 setGlobalDispatcher(new Agent({ connect: { timeout: 60e3 } }) )
 
-const MAX_QUERY_RANGE = 1000
-const MAX_BEACON_RANGE = 100
+const MAX_QUERY_RANGE = parseInt(process.env.MAX_QUERY_RANGE) || 1000
+const MAX_BEACON_RANGE = parseInt(process.env.MAX_BEACON_RANGE) || 100
 
 const NUM_EPOCH_TASKS = parseInt(process.env.NUM_EPOCH_TASKS) || 16
 const NUM_INDEX_TASKS = parseInt(process.env.NUM_INDEX_TASKS) || 2048

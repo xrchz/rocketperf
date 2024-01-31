@@ -154,7 +154,7 @@ async function updateMinipoolPubkeys() {
 }
 
 let blockLock
-if (STANDARD_START_EPOCH && !DUTIES_ONLY) {
+if (STANDARD_START_EPOCH && !DUTIES_ONLY && !process.env.FIXUP_EPOCHS) {
   provider.addListener('block', async () => {
     if (!blockLock) {
       blockLock = Promise.all([

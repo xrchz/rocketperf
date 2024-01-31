@@ -63,7 +63,7 @@ export const arrayPromises = async (a, max, logger) => {
 export const nullAddress = '0x'.padEnd(42, '0')
 
 export const provider = new ethers.JsonRpcProvider(process.env.RPC)
-export const chainId = await provider.getNetwork().then(n => n.chainId)
+export const chainId = await provider.getNetwork().then(n => parseInt(n.chainId))
 export const beaconRpcUrl = process.env.BN
 
 export const db = open({path: 'db', encoder: {structuredClone: true}})
@@ -90,9 +90,9 @@ export const getFinalizedSlot = () =>
   ).then(res => res.json().then(j => j.data.message.slot))
 
 export async function getIndexFromPubkey(pubkey) {
-  const key = `${chainId}/validatorIndex/${pubkey}`
+  const key = [chainId,'validatorIndex',pubkey]
   const cached = db.get(key)
-  if (isNaN(parseInt(cached))) {
+  if (typeof cached != 'number') {
     const path = `/eth/v1/beacon/states/finalized/validators/${pubkey}`
     const url = new URL(`${beaconRpcUrl}${path}`)
     const response = await fetch(url)
@@ -104,7 +104,7 @@ export async function getIndexFromPubkey(pubkey) {
       console.warn(`Unexpected response status getting ${pubkey} index: ${response.status}`)
       return -2
     }
-    const index = await response.json().then(j => j.data.index)
+    const index = await response.json().then(j => parseInt(j.data.index))
     await db.put(key, index)
     return index
   } else return cached
@@ -170,9 +170,9 @@ export function multicall(calls) {
     .then(res => Array.from(res[1]).map((r, i) => posts[i](r)))
 }
 
-export let minipoolsByPubkeyCount = db.get(`${chainId}/minipoolsByPubkeyCount`) ?? 0
+export let minipoolsByPubkeyCount = db.get([chainId,'minipoolsByPubkeyCount']) ?? 0
 export const incrementMinipoolsByPubkeyCount = n => minipoolsByPubkeyCount += n
-export const minipoolsByPubkey = db.get(`${chainId}/minipoolsByPubkey`) ?? new Map()
+export const minipoolsByPubkey = db.get([chainId,'minipoolsByPubkey']) ?? new Map()
 export let minipoolCount
 export const updateMinipoolCount = async () => {
   minipoolCount = parseInt(

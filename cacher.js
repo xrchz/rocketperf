@@ -72,7 +72,7 @@ const statusDissolved = 4n
 
 const rocketStorageGenesisBlock = rocketStorageGenesisBlockByChain[chainId]
 
-let withdrawalAddressBlock = db.get(`${chainId}/withdrawalAddressBlock`)
+let withdrawalAddressBlock = db.get([chainId,'withdrawalAddressBlock'])
 if (!withdrawalAddressBlock) withdrawalAddressBlock = rocketStorageGenesisBlock
 
 async function updateWithdrawalAddresses() {
@@ -86,14 +86,14 @@ async function updateWithdrawalAddresses() {
       const nodeAddress = entry.args[0]
       const withdrawalAddress = entry.args[1]
       await db.transaction(() => {
-        const key = `${chainId}/withdrawalAddress/${withdrawalAddress}`
+        const key = [chainId,'withdrawalAddress',withdrawalAddress]
         const nodeAddresses = db.get(key) || new Set()
         nodeAddresses.add(nodeAddress)
         db.put(key, nodeAddresses)
       })
     }
     withdrawalAddressBlock = max
-    await db.put(`${chainId}/withdrawalAddressBlock`, withdrawalAddressBlock)
+    await db.put([chainId,'withdrawalAddressBlock'], withdrawalAddressBlock)
   }
 }
 
@@ -147,8 +147,8 @@ async function updateMinipoolPubkeys() {
   }
   if (minipoolCount != prevMinipoolCount) {
     await db.transaction(() => {
-      db.put(`${chainId}/minipoolsByPubkeyCount`, minipoolsByPubkeyCount)
-      db.put(`${chainId}/minipoolsByPubkey`, minipoolsByPubkey)
+      db.put([chainId,'minipoolsByPubkeyCount'], minipoolsByPubkeyCount)
+      db.put([chainId,'minipoolsByPubkey'], minipoolsByPubkey)
     })
   }
 }
@@ -168,16 +168,16 @@ if (STANDARD_START_EPOCH && !DUTIES_ONLY) {
 }
 
 const fixAnkrPubkeyFromIndex = new Map([
-  ['1110070', '0xa79f1abda7e2c1fa37736a00e3da97d7d4c988a3293abff97bf18a946778a22c6de1778d67490a0ff2a01b9842923ec8'],
-  ['1117590', '0xb26b3440bfac9b7adbeb8ffa2d3351d6bf8b3c0cea8cd7e6d02da46c51f7f30b6cddbab7c7560b9810b990d044404758'],
-  ['1117589', '0xab7f239b5d85921249e0d587a0fea19e62b609e00b366403f32d8be179e1f9d0120c37ee34e1af2523d86cfde0e2ec1c'],
-  ['1129625', '0xaae335e3f300e81b3e67fc2695c94d894cc8ab51ed930e7f4c408d0f6ca125f513365b13026c94661533287409ff6871'],
-  ['1139387', '0x979b5256b865366b40f25ca537cd3caac31e5fb2a386a79d94a046f5f7aba507a19290b0cfb400f8824e038daa1c692b'],
-  ['1139388', '0xadf733840e05ffbb23dd354a0f090eba1c8569db2c1824bbeb9b2703aae6ea12c4810bb1d20b42edcba7494234370d1a']
+  [1110070, '0xa79f1abda7e2c1fa37736a00e3da97d7d4c988a3293abff97bf18a946778a22c6de1778d67490a0ff2a01b9842923ec8'],
+  [1117590, '0xb26b3440bfac9b7adbeb8ffa2d3351d6bf8b3c0cea8cd7e6d02da46c51f7f30b6cddbab7c7560b9810b990d044404758'],
+  [1117589, '0xab7f239b5d85921249e0d587a0fea19e62b609e00b366403f32d8be179e1f9d0120c37ee34e1af2523d86cfde0e2ec1c'],
+  [1129625, '0xaae335e3f300e81b3e67fc2695c94d894cc8ab51ed930e7f4c408d0f6ca125f513365b13026c94661533287409ff6871'],
+  [1139387, '0x979b5256b865366b40f25ca537cd3caac31e5fb2a386a79d94a046f5f7aba507a19290b0cfb400f8824e038daa1c692b'],
+  [1139388, '0xadf733840e05ffbb23dd354a0f090eba1c8569db2c1824bbeb9b2703aae6ea12c4810bb1d20b42edcba7494234370d1a']
 ])
 
 async function getActivationInfo(validatorIndex) {
-  const key = `${chainId}/validator/${validatorIndex}/activationInfo`
+  const key = [chainId,'validator',validatorIndex,'activationInfo']
   const activationInfo = db.get(key) ?? {}
   let changed = false
   if (!('beacon' in activationInfo)) {
@@ -287,10 +287,11 @@ async function getAttestationDuties(epoch, validatorIds) {
   })
   for (const {index, slot, validators} of committees) {
     if (!running) break
-    for (const [position, selectedIndex] of validators.entries()) {
+    for (const [position, validator_index] of validators.entries()) {
       if (!running) break
+      const selectedIndex = parseInt(validator_index)
       if (validatorIds.has(selectedIndex)) {
-        const attestationKey = `${chainId}/validator/${selectedIndex}/attestation/${epoch}`
+        const attestationKey = [chainId,'validator',selectedIndex,'attestation',epoch]
         const attestation = db.get(attestationKey) || {}
         if (!('position' in attestation)) {
           // log(`Adding attestation duty @ ${slot} for validator ${selectedIndex}`)
@@ -344,9 +345,10 @@ async function processEpoch(epoch, validatorIds) {
     const json = await res.json()
     return json.data.validators
   })
-  for (const [position, validatorIndex] of syncValidators.entries()) {
+  for (const [position, validator_index] of syncValidators.entries()) {
+    const validatorIndex = parseInt(validator_index)
     if (validatorIds.has(validatorIndex)) {
-      const syncKey = `${chainId}/validator/${validatorIndex}/sync/${epoch}`
+      const syncKey = [chainId,'validator',validatorIndex,'sync',epoch]
       const sync = db.get(syncKey) || {}
       if (!('position' in sync)) {
         log(`Adding sync duty for epoch ${epoch} for validator ${validatorIndex}`)
@@ -362,7 +364,7 @@ async function processEpoch(epoch, validatorIds) {
   log(`Getting attestations and syncs for ${epoch}`)
 
   for (const validatorIndex of validatorIds) {
-    if (!(epoch <= db.get(`${chainId}/validator/${validatorIndex}/dutiesEpoch`)))
+    if (!(epoch <= db.get([chainId,'validator',validatorIndex,'dutiesEpoch'])))
       await cleanupThenError(`dutiesEpoch for ${validatorIndex} too low for ${epoch}`)
   }
 
@@ -391,7 +393,7 @@ async function processEpoch(epoch, validatorIds) {
       const attestedBits = hexStringToBitlist(aggregation_bits)
       const attestationEpoch = epochOfSlot(parseInt(slot))
       validatorIdsArray.forEach(validatorIndex => {
-        const attestationKey = `${chainId}/validator/${validatorIndex}/attestation/${attestationEpoch}`
+        const attestationKey = [chainId,'validator',validatorIndex,'attestation',attestationEpoch]
         const attestation = db.get(attestationKey)
         if (attestation?.slot == slot && attestation.index == index && !(attestation.attested?.slot <= searchSlot)) {
           if (attestedBits[attestation.position]) {
@@ -406,7 +408,7 @@ async function processEpoch(epoch, validatorIds) {
     if (blockData.sync_aggregate) {
       const syncBits = hexStringToBitvector(blockData.sync_aggregate.sync_committee_bits)
       validatorIdsArray.forEach(validatorIndex => {
-        const syncKey = `${chainId}/validator/${validatorIndex}/sync/${epoch}`
+        const syncKey = [chainId,'validator',validatorIndex,'sync',epoch]
         const sync = syncUpdates.get(syncKey) || db.get(syncKey)
         if (sync && !syncBits[sync.position] && !sync.missed.includes(searchSlot)) {
           sync.missed.push(searchSlot)
@@ -424,7 +426,8 @@ async function processEpoch(epoch, validatorIds) {
         return json.data
       })
       for (const {validator_index, reward} of syncRewards) {
-        const syncKey = `${chainId}/validator/${validator_index}/sync/${epoch}`
+        const validatorIndex = parseInt(validator_index)
+        const syncKey = [chainId,'validator',validatorIndex,'sync',epoch]
         const sync = syncUpdates.get(syncKey) || db.get(syncKey)
         if (!sync) {
           if (reward !== '0')
@@ -475,7 +478,7 @@ async function processEpoch(epoch, validatorIds) {
   })
   for (const {validator_index, head, target, source, inactivity} of attestationRewards.total_rewards) {
     if (!running) break
-    const attestationKey = `${chainId}/validator/${validator_index}/attestation/${epoch}`
+    const attestationKey = [chainId,'validator',parseInt(validator_index),'attestation',epoch]
     const attestation = attestationUpdates.get(attestationKey) || db.get(attestationKey)
     if (attestation && !('reward' in attestation && 'ideal' in attestation)) {
       const effectiveBalance = effectiveBalances.get(validator_index)
@@ -508,8 +511,9 @@ async function processEpoch(epoch, validatorIds) {
   })
   for (const {validator_index, slot} of proposals) {
     if (!running) break
-    if (validatorIds.has(validator_index)) {
-      const proposalKey = `${chainId}/validator/${validator_index}/proposal/${slot}`
+    const validatorIndex = parseInt(validator_index)
+    if (validatorIds.has(validatorIndex)) {
+      const proposalKey = [chainId,'validator',validatorIndex,'proposal',parseInt(slot)]
       const proposal = db.get(proposalKey) || {}
       if (!('reward' in proposal)) {
         const proposalRewardUrl = new URL(`${beaconRpcUrl}/eth/v1/beacon/rewards/blocks/${slot}`)
@@ -541,8 +545,8 @@ const tasks = []
 async function processEpochsLoop(finalizedSlot, dutiesOnly) {
   const uptoKeyBase = dutiesOnly ? `dutiesEpoch` : `nextEpoch`
 
-  const startKey = STANDARD_START_EPOCH ? '' : `/${OVERRIDE_START_EPOCH}`
-  const uptoKey = `${uptoKeyBase}${startKey}`
+  const startKey = STANDARD_START_EPOCH ? [] : [OVERRIDE_START_EPOCH]
+  const uptoKey = [uptoKeyBase, ...startKey]
   const startDefault = STANDARD_START_EPOCH ? 0 : OVERRIDE_START_EPOCH
 
   const alreadyOverridden = new Set()
@@ -550,10 +554,10 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
   if (!STANDARD_START_EPOCH) {
     let changed
     for (const validatorIndex of validatorActivationEpochs.keys()) {
-      const standardKey = `${chainId}/validator/${validatorIndex}/nextEpoch`
+      const standardKey = [chainId,'validator',validatorIndex,'nextEpoch']
       const standardNextEpoch = db.get(standardKey)
       if (standardNextEpoch >= OVERRIDE_START_EPOCH) {
-        const overrideKey = `${chainId}/validator/${validatorIndex}/nextEpoch${startKey}`
+        const overrideKey = [chainId,'validator',validatorIndex,'nextEpoch',...startKey]
         const overrideNextEpoch = db.get(overrideKey)
         const actionMsg = overrideNextEpoch > standardNextEpoch ?
           `: merging up to ${overrideNextEpoch}` :
@@ -589,7 +593,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
       validatorIndex,
       Math.max(
         db.get(
-          `${chainId}/validator/${validatorIndex}/${alreadyOverridden.has(validatorIndex) ? uptoKeyBase : uptoKey}`
+          [chainId,'validator',validatorIndex,...(alreadyOverridden.has(validatorIndex) ? [uptoKeyBase] : uptoKey)]
         ) ?? startDefault,
         activationEpoch
       )
@@ -653,7 +657,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
         const nextEpoch = epoch + 1
         for (const validatorIndex of validatorIds.keys()) {
           if (!running) break
-          const nextEpochKey = `${chainId}/validator/${validatorIndex}/${alreadyOverridden.has(validatorIndex) ? uptoKeyBase : uptoKey}`
+          const nextEpochKey = [chainId,'validator',validatorIndex,...(alreadyOverridden.has(validatorIndex) ? [uptoKeyBase] : uptoKey)]
           const currentValue = db.get(nextEpochKey)
           if (!currentValue || currentValue < nextEpoch) {
             updated.push(validatorIndex)
@@ -702,7 +706,7 @@ async function processEpochs() {
   await arrayPromises(
     validatorIdsToProcess.map(validatorIndex =>
       async () => {
-        if (!(0 <= parseInt(validatorIndex))) return
+        if (!(0 <= validatorIndex)) return
         const epoch = epochFromActivationInfo(await getActivationInfo(validatorIndex))
         if (typeof epoch == 'number')
           validatorActivationEpochs.set(validatorIndex, epoch)

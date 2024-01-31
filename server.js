@@ -155,7 +155,7 @@ async function lookupEntity(entity) {
         continue
       }
       await tryProcessNode(s)
-      const nodeAddresses = db.get(`${chainId}/withdrawalAddress/${s}`)
+      const nodeAddresses = db.get([chainId,'withdrawalAddress',s])
       if (nodeAddresses) {
         for (const nodeAddress of nodeAddresses.values()) {
           if (starred || await rocketNodeManager.getNodeWithdrawalAddress(
@@ -280,7 +280,7 @@ io.on('connection', socket => {
     let max = await getFinalizedSlot()
     let min = max
     for (const validatorIndex of validatorIndices) {
-      const activationInfo = db.get(`${chainId}/validator/${validatorIndex}/activationInfo`)
+      const activationInfo = db.get([chainId,'validator',validatorIndex,'activationInfo'])
       if (!activationInfo) {
         console.warn(`No activationInfo for ${validatorIndex} trying to set slotRangeLimits`)
         continue
@@ -289,7 +289,7 @@ io.on('connection', socket => {
         parseInt(activationInfo.promoted) :
         parseInt(activationInfo.beacon) * slotsPerEpoch
       min = Math.min(min, validatorMin)
-      const nextEpoch = db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`)
+      const nextEpoch = db.get([chainId,'validator',validatorIndex,'nextEpoch'])
       if (typeof nextEpoch != 'number') {
         console.warn(`No nextEpoch for ${validatorIndex} trying to set slotRangeLimits`)
         max = Math.min(max, validatorMin)
@@ -317,8 +317,8 @@ io.on('connection', socket => {
   socket.on('validatorPerformance', async (validatorIndex, fromSlot, toSlot, callback) => {
     // log(`${socket.id} requesting validatorPerformance ${validatorIndex} ${fromSlot} ${toSlot}`)
     const result = {}
-    const activationEpoch = epochFromActivationInfo(db.get(`${chainId}/validator/${validatorIndex}/activationInfo`))
-    const nextEpoch = db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`)
+    const activationEpoch = epochFromActivationInfo(db.get([chainId,'validator',validatorIndex,'activationInfo']))
+    const nextEpoch = db.get([chainId,'validator',validatorIndex,'nextEpoch'])
     if (typeof(nextEpoch) != 'number' || nextEpoch <= epochOfSlot(toSlot))
       return callback({error: {nextEpoch}})
     if (typeof(activationEpoch) != 'number' || epochOfSlot(toSlot) < activationEpoch)
@@ -331,7 +331,7 @@ io.on('connection', socket => {
       // log(`Up to slot ${slot} out of ${toSlot} for ${validatorIndex} for ${socket.id}`)
       const epoch = epochOfSlot(slot)
 
-      const attestation = db.get(`${chainId}/validator/${validatorIndex}/attestation/${epoch}`)
+      const attestation = db.get([chainId,'validator',validatorIndex,'attestation',epoch])
       if (attestation?.slot === slot) {
         const attestations = day.attestations
         attestations.duties += 1
@@ -345,7 +345,7 @@ io.on('connection', socket => {
         attestations.slots.add(slot)
       }
 
-      const proposal = db.get(`${chainId}/validator/${validatorIndex}/proposal/${slot}`)
+      const proposal = db.get([chainId,'validator',validatorIndex,'proposal',parseInt(slot)])
       if (proposal) {
         const proposals = day.proposals
         proposals.duties += 1
@@ -355,7 +355,7 @@ io.on('connection', socket => {
         proposals.slots.add(slot)
       }
 
-      const sync = db.get(`${chainId}/validator/${validatorIndex}/sync/${epoch}`)
+      const sync = db.get([chainId,'validator',validatorIndex,'sync',epoch])
       const syncReward = sync?.rewards.find(({slot: syncSlot}) => slot == syncSlot)
       const syncMissed = sync?.missed.includes(slot)
       if (syncReward || syncMissed) {

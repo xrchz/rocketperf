@@ -1177,7 +1177,7 @@ const compareNumbers = (a,b) => a - b
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 const changeSelectedBoxes = () => {
-  const indices = validatorIndicesInTable()
+  const indices = validatorIndicesInTable().map(i => parseInt(i))
   slotRangeLimits.validatorsChanged = indices.length + 1
   setHeadingsLoading()
   socket.volatile.emit('slotRangeLimits', indices)

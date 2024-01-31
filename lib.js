@@ -123,7 +123,8 @@ export async function getPubkeyFromIndex(index) {
 
 export const rocketStorage = new ethers.Contract(
   await provider.resolveName('rocketstorage.eth'),
-  ['function getAddress(bytes32 _key) view returns (address)'],
+  ['function getAddress(bytes32 _key) view returns (address)',
+   'event NodeWithdrawalAddressSet (address indexed node, address indexed withdrawalAddress, uint256 time)'],
   provider
 )
 log(`Rocket Storage: ${await rocketStorage.getAddress()}`)

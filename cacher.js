@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { fetch, setGlobalDispatcher, Agent } from 'undici'
 import { ethers } from 'ethers'
-import { db, provider, chainId, beaconRpcUrl, log, multicall, secondsPerSlot,
+import { db, provider, chainId, beaconRpcUrl, log, multicall, secondsPerSlot, rocketStorage,
          timeSlotConvs, slotsPerEpoch, epochOfSlot, minipoolAbi, arrayMin, arrayMax,
          finishMoreTasks, arrayPromises, interruptArrayPromises, filterResolved,
          minipoolsByPubkeyCount, minipoolsByPubkey, minipoolCount,
@@ -57,12 +57,6 @@ function hexStringToBitlist(s) {
 }
 
 let running = true
-
-const rocketStorage = new ethers.Contract(
-  await provider.resolveName('rocketstorage.eth'),
-  ['event NodeWithdrawalAddressSet (address indexed node, address indexed withdrawalAddress, uint256 time)'],
-  provider
-)
 
 const rocketStorageGenesisBlockByChain = {
   1: 13325233

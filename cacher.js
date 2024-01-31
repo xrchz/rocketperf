@@ -242,7 +242,7 @@ const getValidatorsIdsForEpoch = (validatorNextEpochs, epoch) => new Set(
 )
 
 const postOptionsForEpoch = (validatorIds) => {
-  const ids = Array.from(validatorIds.keys())
+  const ids = Array.from(validatorIds.keys()).map(i => i.toString())
   const options = {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -760,7 +760,9 @@ process.on('SIGINT', async () => {
 
 if (process.env.FIXUP_EPOCHS) {
   const epochs = process.env.FIXUP_EPOCHS.split(',').map(e => parseInt(e))
-  const validatorIds = new Set(process.env.FIXUP_VALIDATORS.split(','))
+  const validatorIds = new Set(
+    process.env.FIXUP_VALIDATORS.split(',').map(i => parseInt(i))
+  )
   for (const epoch of epochs)
     await processEpoch(epoch, validatorIds)
   await cleanup()

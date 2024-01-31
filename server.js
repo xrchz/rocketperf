@@ -84,7 +84,7 @@ async function lookupMinipool({minipoolAddress, nodeInfo, withdrawalInfo, valida
   }
   async function getValidatorInfo() {
     const pubkey = await rocketMinipoolManager.getMinipoolPubkey(minipoolAddress)
-    const validatorIndex = await getIndexFromPubkey(pubkey).then(i => (i < 0 ? 'none' : i.toString()))
+    const validatorIndex = await getIndexFromPubkey(pubkey).then(i => (i < 0 ? 'none' : i))
     return {pubkey, validatorIndex}
   }
   async function getWithdrawalInfo(nodeAddress) {
@@ -183,7 +183,7 @@ async function lookupEntity(entity) {
       log(`${s} is a number`)
       const pubkey = await getPubkeyFromIndex(s)
       if (pubkey) {
-        validatorInfo = {validatorIndex: s}
+        validatorInfo = {validatorIndex: parseInt(s)}
         s = pubkey
         continue
       }

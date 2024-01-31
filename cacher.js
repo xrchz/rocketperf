@@ -356,7 +356,7 @@ async function processEpoch(epoch, validatorIds) {
         sync.position = position
         sync.missed = []
         sync.rewards = []
-        syncUpdates.set(syncKey, sync)
+        syncUpdates.set(syncKey.join('/'), {syncKey, sync})
       }
     }
   }
@@ -401,7 +401,7 @@ async function processEpoch(epoch, validatorIds) {
             attestation.attested = { slot: searchSlot, head: beacon_block_root, source, target }
             // log(`Adding attestation for ${slot} (${attestationEpoch}) for validator ${validatorIndex} @ ${searchSlot}`)
             logAdded.push({slot: searchSlot, validatorIndex, attestationEpoch})
-            attestationUpdates.set(attestationKey, attestation)
+            attestationUpdates.set(attestationKey.join('/'), {attestationKey, attestation})
           }
         }
       })
@@ -410,10 +410,11 @@ async function processEpoch(epoch, validatorIds) {
       const syncBits = hexStringToBitvector(blockData.sync_aggregate.sync_committee_bits)
       validatorIdsArray.forEach(validatorIndex => {
         const syncKey = [chainId,'validator',validatorIndex,'sync',epoch]
-        const sync = syncUpdates.get(syncKey) || db.get(syncKey)
+        const syncKeyStr = syncKey.join('/')
+        const sync = syncUpdates.get(syncKeyStr)?.sync || db.get(syncKey)
         if (sync && !syncBits[sync.position] && !sync.missed.includes(searchSlot)) {
           sync.missed.push(searchSlot)
-          syncUpdates.set(syncKey, sync)
+          syncUpdates.set(syncKeyStr, {syncKey, sync})
         }
       })
 
@@ -429,7 +430,8 @@ async function processEpoch(epoch, validatorIds) {
       for (const {validator_index, reward} of syncRewards) {
         const validatorIndex = parseInt(validator_index)
         const syncKey = [chainId,'validator',validatorIndex,'sync',epoch]
-        const sync = syncUpdates.get(syncKey) || db.get(syncKey)
+        const syncKeyStr = syncKey.join('/')
+        const sync = syncUpdates.get(syncKeyStr)?.sync || db.get(syncKey)
         if (!sync) {
           if (reward !== '0')
             await cleanupThenError(`Non-zero reward ${reward} but no sync object at ${syncKey}`)
@@ -439,7 +441,7 @@ async function processEpoch(epoch, validatorIds) {
           // log(`Adding sync reward for ${searchSlot} for validator ${validator_index}: ${reward}`)
           logAdded.push({slot: searchSlot, validatorIndex: validator_index, reward})
           sync.rewards.push({slot: searchSlot, reward})
-          syncUpdates.set(syncKey, sync)
+          syncUpdates.set(syncKeyStr, {syncKey, sync})
         }
       }
     }
@@ -453,7 +455,7 @@ async function processEpoch(epoch, validatorIds) {
       log(`Added ${logAdded.length - addedAttestations} sync rewards for ${epoch}`)
   }
 
-  syncUpdates.forEach((v, k) => promises.push(db.put(k, v)))
+  syncUpdates.forEach(({syncKey, sync}) => promises.push(db.put(syncKey, sync)))
 
   if (!running) return
   log(`Getting attestation rewards for ${epoch}`)
@@ -480,7 +482,8 @@ async function processEpoch(epoch, validatorIds) {
   for (const {validator_index, head, target, source, inactivity} of attestationRewards.total_rewards) {
     if (!running) break
     const attestationKey = [chainId,'validator',parseInt(validator_index),'attestation',epoch]
-    const attestation = attestationUpdates.get(attestationKey) || db.get(attestationKey)
+    const attestationKeyStr = attestationKey.join('/')
+    const attestation = attestationUpdates.get(attestationKeyStr)?.attestation || db.get(attestationKey)
     if (attestation && !('reward' in attestation && 'ideal' in attestation)) {
       const effectiveBalance = effectiveBalances.get(validator_index)
       attestation.reward = {head, target, source, inactivity}
@@ -491,12 +494,14 @@ async function processEpoch(epoch, validatorIds) {
         attestation.ideal[key] = ideal[key]
       // log(`Adding attestation reward for epoch ${epoch} for validator ${validator_index}: ${Object.entries(attestation.reward)} / ${Object.entries(attestation.ideal)}`)
       logAdded.push(validator_index)
-      attestationUpdates.set(attestationKey, attestation)
+      attestationUpdates.set(attestationKeyStr, {attestationKey, attestation})
     }
   }
   log(`Added ${logAdded.length} attestation rewards for epoch ${epoch}`)
 
-  attestationUpdates.forEach((v, k) => promises.push(db.put(k, v)))
+  attestationUpdates.forEach(({attestationKey, attestation}) =>
+    promises.push(db.put(attestationKey, attestation))
+  )
 
   if (!running) return
   log(`Getting proposals for ${epoch}`)

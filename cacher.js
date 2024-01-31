@@ -78,6 +78,7 @@ if (!withdrawalAddressBlock) withdrawalAddressBlock = rocketStorageGenesisBlock
 async function updateWithdrawalAddresses() {
   const finalizedBlockNumber = await provider.getBlock('finalized').then(b => b.number)
   while (withdrawalAddressBlock < finalizedBlockNumber) {
+    if (!running) break
     const min = withdrawalAddressBlock
     const max = Math.min(withdrawalAddressBlock + MAX_QUERY_RANGE, finalizedBlockNumber)
     log(`Processing withdrawal addresses ${min}...${max}`)

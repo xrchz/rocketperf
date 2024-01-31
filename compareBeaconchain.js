@@ -5,9 +5,11 @@ const activationEpochs = new Map()
 const getActivationEpoch = (validatorIndex) => {
   const cached = activationEpochs.get(validatorIndex)
   if (typeof cached != 'undefined') return cached
-  const key = `${chainId}/validator/${validatorIndex}/activationInfo`
+  const key = [chainId,'validator',validatorIndex,'activationInfo']
   const activationInfo = db.get(key)
   const epoch = activationInfo.beacon
+  if (typeof epoch != 'number')
+    throw new Error(`Unexpected activation epoch for ${validatorIndex}: ${epoch}`)
   activationEpochs.set(validatorIndex, epoch)
   return epoch
 }
@@ -70,14 +72,13 @@ const checkAttestationForEpoch = async (validatorIndex, epoch) => {
 while (true) {
   const randomIndex = Math.floor(Math.random() * 1000000)
   const randomEpoch = Math.floor(Math.random() * 1000000)
-  const start = `${chainId}/validator/${randomIndex}/attestation/${randomEpoch}`
-  const end = `${chainId}/validator/${randomIndex}/attestation/a`
+  const start = [chainId,'validator',randomIndex,'attestation',randomEpoch]
+  const end = [chainId,'validator',randomIndex,'attestation','']
   for (const key of db.getKeys({start, end, snapshot: false})) {
-    const [chainIdLit, validatorLit, validatorIndex, attestationLit, epochStr] = key.split('/')
+    const [chainIdLit, validatorLit, validatorIndex, attestationLit, epoch] = key
     if (chainIdLit == chainId && validatorLit === 'validator' && attestationLit === 'attestation') {
-      const epoch = parseInt(epochStr)
-      const nextEpoch = db.get(`${chainId}/validator/${validatorIndex}/nextEpoch`)
-      if (!nextEpoch || nextEpoch <= epoch) continue
+      const nextEpoch = db.get([chainId,'validator',validatorIndex,'nextEpoch'])
+      if (!nextEpoch || nextEpoch <= epoch) break // this validator no good for epoch or above
       log(`Checking ${key}`)
       const attestation = db.get(key)
       const {slot, attested, attestedSlot} = await checkAttestationForEpoch(validatorIndex, epoch).catch((e) => {
@@ -85,11 +86,11 @@ while (true) {
         else throw e
       })
       if (!!attestation.attested != attested)
-        throw new Error(`Attested discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epochStr}`)
+        throw new Error(`Attested discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epoch}`)
       if (attestation.slot != slot)
-        throw new Error(`Slot discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epochStr}`)
+        throw new Error(`Slot discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epoch}`)
       if (attested && attestation.attested.slot != attestedSlot)
-        throw new Error(`Attested slot discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epochStr}`)
+        throw new Error(`Attested slot discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epoch}`)
       break
     }
   }

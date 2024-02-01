@@ -5,6 +5,16 @@ const end = process.env.END
 
 const replacements = []
 const batchSize = parseInt(process.env.BS) || 8192
+async function clearBatch() {
+  const {key: lastKey} = replacements.at(-1)
+  await db.transaction(() => {
+    for (const {key, newKey, value} of replacements.splice(0, Infinity)) {
+      db.remove(key)
+      db.put(newKey, value)
+    }
+  })
+  console.log(`Replaced up to ${lastKey}`)
+}
 
 for (const {key, value} of db.getRange({start, end})) {
   if (typeof key != 'string') {
@@ -21,14 +31,7 @@ for (const {key, value} of db.getRange({start, end})) {
       newKey[i+1] = parseInt(newKey[++i])
   }
   replacements.push({key, newKey, value})
-  if (replacements.length >= batchSize) {
-    const {key: lastKey} = replacements.at(-1)
-    await db.transaction(() => {
-      for (const {key, newKey, value} of replacements.splice(0, Infinity)) {
-        db.remove(key)
-        db.put(newKey, value)
-      }
-    })
-    console.log(`Replaced up to ${lastKey}`)
-  }
+  console.log(`Will replace ${key} with ${newKey}`)
+  if (replacements.length >= batchSize) await clearBatch()
 }
+if (replacements.length) await clearBatch()

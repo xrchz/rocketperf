@@ -155,8 +155,14 @@ async function updateMinipoolPubkeys() {
   }
 }
 
+const LISTEN_BLOCKS = (
+  process.env.ONLY_BLOCK_LISTENER ||
+  (STANDARD_START_EPOCH && !DUTIES_ONLY &&
+   !process.env.FIXUP_EPOCHS && !process.env.NO_BLOCK_LISTENER)
+)
+
 let blockLock
-if (STANDARD_START_EPOCH && !DUTIES_ONLY && !process.env.FIXUP_EPOCHS) {
+if (LISTEN_BLOCKS) {
   provider.addListener('block', async () => {
     if (!blockLock) {
       blockLock = Promise.all([
@@ -774,7 +780,7 @@ if (process.env.FIXUP_EPOCHS) {
     await processEpoch(epoch, validatorIds)
   await cleanup()
 }
-else {
+else if (!process.env.ONLY_BLOCK_LISTENER) {
   while (true) {
     await processEpochs()
     if (STANDARD_FINAL_SLOT)

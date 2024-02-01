@@ -1,4 +1,5 @@
 import { db, chainId, log, beaconRpcUrl } from './lib.js'
+import { spawnSync } from 'node:child_process'
 
 const getHead = async (slot) => {
   const url = new URL(`${beaconRpcUrl}/eth/v1/beacon/headers?slot=${slot}`)
@@ -82,6 +83,43 @@ const checkAttestationForEpoch = async (validatorIndex, epoch) => {
 
 const rewardKeys = ['head', 'target', 'source', 'inactivity']
 
+async function checkKey(key, validatorIndex, epoch) {
+  log(`Checking ${key}`)
+  const attestation = db.get(key)
+  const {slot, attested, attestedSlot} = await checkAttestationForEpoch(validatorIndex, epoch).catch((e) => {
+    if (e.message.startsWith('Failed')) return checkAttestationForEpoch(validatorIndex, epoch)
+    else throw e
+  })
+  if (!!attestation.attested != attested)
+    throw new Error(`Attested discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epoch}`)
+  if (attestation.slot != slot)
+    throw new Error(`Slot discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epoch}`)
+  if (attested) {
+    if (attestation.attested.slot != attestedSlot)
+      throw new Error(`Attested slot discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epoch}`)
+    const timely = attestation.attested.slot - attestation.slot <= 1
+    if (!('reward' in attestation) || !('ideal' in attestation))
+      throw new Error(`Attestation for ${slot} missing reward for validator ${validatorIndex} epoch ${epoch}`)
+    else if (
+      timely &&
+      attestation.reward['head'] != attestation.ideal['head'] &&
+      rewardKeys.slice(1).every(k => attestation.reward[k] == attestation.ideal[k])
+    ) {
+      const canonicalHead = await getHead(attestation.slot)
+      if (attestation.attested.head == canonicalHead)
+        throw new Error(`Timely correct attestation for ${slot} has non-ideal head reward for validator ${validatorIndex} epoch ${epoch}`)
+      else
+        log(`${validatorIndex} had wrong head (${attestation.attested.head} vs ${canonicalHead}) for epoch ${epoch}`)
+    }
+    else if (timely && rewardKeys.some(k => attestation.reward[k] != attestation.ideal[k])) {
+      if (rewardKeys.some(k => attestation.reward[k].startsWith('-')))
+        log(`Timely attestation for ${slot} has non-ideal reward, but negative so assuming incorrect, for validator ${validatorIndex} epoch ${epoch}`)
+      else
+        throw new Error(`Timely attestation for ${slot} has non-ideal reward for validator ${validatorIndex} epoch ${epoch}`)
+    }
+  }
+}
+
 while (true) {
   const randomIndex = Math.floor(Math.random() * 1000000)
   const randomEpoch = Math.floor(Math.random() *  300000)
@@ -92,40 +130,14 @@ while (true) {
     if (chainIdLit == chainId && validatorLit === 'validator' && attestationLit === 'attestation') {
       const nextEpoch = db.get([chainId,'validator',validatorIndex,'nextEpoch'])
       if (!nextEpoch || nextEpoch <= epoch) break // this validator no good for epoch or above
-      log(`Checking ${key}`)
-      const attestation = db.get(key)
-      const {slot, attested, attestedSlot} = await checkAttestationForEpoch(validatorIndex, epoch).catch((e) => {
-        if (e.message.startsWith('Failed')) return checkAttestationForEpoch(validatorIndex, epoch)
+      await checkKey(key, validatorIndex, epoch).catch(e => {
+        if (e.message.includes('discrepancy')) {
+          log(`Attempting attestation fixup of ${validatorIndex} at ${epoch}...`)
+          spawnSync('node', ['cacher'], {env: {'FIXUP_EPOCHS': epoch.toString(), 'FIXUP_VALIDATORS': validatorIndex.toString()}})
+          return checkKey(key, validatorIndex, epoch).then(() => log(`Fixup succeeded`))
+        }
         else throw e
       })
-      if (!!attestation.attested != attested)
-        throw new Error(`Attested discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epoch}`)
-      if (attestation.slot != slot)
-        throw new Error(`Slot discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epoch}`)
-      if (attested) {
-        if (attestation.attested.slot != attestedSlot)
-          throw new Error(`Attested slot discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epoch}`)
-        const timely = attestation.attested.slot - attestation.slot <= 1
-        if (!('reward' in attestation) || !('ideal' in attestation))
-          throw new Error(`Attestation for ${slot} missing reward for validator ${validatorIndex} epoch ${epoch}`)
-        else if (
-          timely &&
-          attestation.reward['head'] != attestation.ideal['head'] &&
-          rewardKeys.slice(1).every(k => attestation.reward[k] == attestation.ideal[k])
-        ) {
-          const canonicalHead = await getHead(attestation.slot)
-          if (attestation.attested.head == canonicalHead)
-            throw new Error(`Timely correct attestation for ${slot} has non-ideal head reward for validator ${validatorIndex} epoch ${epoch}`)
-          else
-            log(`${validatorIndex} had wrong head (${attestation.attested.head} vs ${canonicalHead}) for epoch ${epoch}`)
-        }
-        else if (timely && rewardKeys.some(k => attestation.reward[k] != attestation.ideal[k])) {
-          if (rewardKeys.some(k => attestation.reward[k].startsWith('-')))
-            log(`Timely attestation for ${slot} has non-ideal reward, but negative so assuming incorrect, for validator ${validatorIndex} epoch ${epoch}`)
-          else
-            throw new Error(`Timely attestation for ${slot} has non-ideal reward for validator ${validatorIndex} epoch ${epoch}`)
-        }
-      }
       break
     }
   }

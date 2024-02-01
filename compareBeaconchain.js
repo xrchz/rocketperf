@@ -22,7 +22,11 @@ const fetchBeaconchain = async (path) => {
   const now = Date.now()
   const toWait = lastFetch + minWait - now
   if (0 < toWait) await new Promise(resolve => setTimeout(resolve, toWait))
-  const res = await fetch(url)
+  const headers = {
+    'Accept': 'application/json',
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0'
+  }
+  const res = await fetch(url, {headers})
   lastFetch = Date.now()
   return await res.json()
 }
@@ -71,7 +75,7 @@ const checkAttestationForEpoch = async (validatorIndex, epoch) => {
 
 while (true) {
   const randomIndex = Math.floor(Math.random() * 1000000)
-  const randomEpoch = Math.floor(Math.random() * 1000000)
+  const randomEpoch = Math.floor(Math.random() *  300000)
   const start = [chainId,'validator',randomIndex,'attestation',randomEpoch]
   const end = [chainId,'validator',randomIndex,'attestation','']
   for (const key of db.getKeys({start, end, snapshot: false})) {

@@ -78,6 +78,7 @@ async function updateWithdrawalAddresses() {
     log(`Processing withdrawal addresses ${min}...${max}`)
     const logs = await rocketStorage.queryFilter('NodeWithdrawalAddressSet', min, max)
     for (const entry of logs) {
+      if (!running) break
       const nodeAddress = entry.args[0]
       const withdrawalAddress = entry.args[1]
       const key = [chainId,'withdrawalAddress',withdrawalAddress]
@@ -99,6 +100,8 @@ async function updateMinipoolPubkeys() {
   const prevMinipoolCount = minipoolCount
   await updateMinipoolCount()
   while (minipoolsByPubkeyCount < minipoolCount) {
+    if (!running) break
+    log(`Up to ${minipoolsByPubkeyCount} out of ${minipoolCount} minipools to get pubkeys`)
     const n = Math.min(MAX_QUERY_RANGE, minipoolCount - minipoolsByPubkeyCount)
     const minipoolAddresses = await multicall(
       Array(n).fill().map((_, i) => ({
@@ -115,6 +118,7 @@ async function updateMinipoolPubkeys() {
       }))
     )
     for (const [i, minipoolAddress] of minipoolAddresses.entries()) {
+      if (!running) break
       const pubkey = pubkeys[i]
       const currentEntry = minipoolsByPubkey[pubkey]
       if (currentEntry && currentEntry != minipoolAddress) {

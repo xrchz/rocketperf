@@ -80,11 +80,14 @@ async function updateWithdrawalAddresses() {
     for (const entry of logs) {
       const nodeAddress = entry.args[0]
       const withdrawalAddress = entry.args[1]
+      const key = [chainId,'withdrawalAddress',withdrawalAddress]
+      log(`Processing withdrawalAddress ${withdrawalAddress}`)
       await db.transaction(() => {
-        const key = [chainId,'withdrawalAddress',withdrawalAddress]
-        const nodeAddresses = db.get(key) || new Set()
-        nodeAddresses.add(nodeAddress)
-        db.put(key, nodeAddresses)
+        const nodeAddresses = db.get(key) || []
+        if (!nodeAddresses.includes(nodeAddress)) {
+          nodeAddresses.push(nodeAddress)
+          db.put(key, nodeAddresses)
+        }
       })
     }
     withdrawalAddressBlock = max
@@ -113,7 +116,7 @@ async function updateMinipoolPubkeys() {
     )
     for (const [i, minipoolAddress] of minipoolAddresses.entries()) {
       const pubkey = pubkeys[i]
-      const currentEntry = minipoolsByPubkey.get(pubkey)
+      const currentEntry = minipoolsByPubkey[pubkey]
       if (currentEntry && currentEntry != minipoolAddress) {
         const currentMinipool = new ethers.Contract(currentEntry, minipoolAbi, provider)
         const pendingMinipool = new ethers.Contract(minipoolAddress, minipoolAbi, provider)
@@ -126,7 +129,7 @@ async function updateMinipoolPubkeys() {
         if (!activeAddress)
           await cleanupThenError(`Duplicate minipools for ${pubkey} with neither dissolved: ${minipoolAddress} vs ${currentEntry}`)
         log(`Found duplicate minipools for ${pubkey}: ${minipoolAddress} vs ${currentEntry}. Keeping ${activeAddress}.`)
-        minipoolsByPubkey.set(pubkey, activeAddress)
+        minipoolsByPubkey[pubkey] = activeAddress
       }
       else {
         const currentMinipool = new ethers.Contract(minipoolAddress, minipoolAbi, provider)
@@ -134,7 +137,7 @@ async function updateMinipoolPubkeys() {
         if (currentStatus == statusDissolved)
           log(`Ignoring minipool ${minipoolAddress} for ${pubkey} because it is dissolved`)
         else
-          minipoolsByPubkey.set(pubkey, minipoolAddress)
+          minipoolsByPubkey[pubkey] = minipoolAddress
       }
     }
     incrementMinipoolsByPubkeyCount(n)
@@ -686,15 +689,15 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
 }
 
 async function processEpochs() {
-  const targetMinipoolCount = minipoolsByPubkey.size
+  const pubkeys = Object.keys(minipoolsByPubkey)
+  const targetMinipoolCount = pubkeys.length
 
   log(`targetMinipoolCount: ${targetMinipoolCount}, processedMinipoolCount: ${processedMinipoolCount}`)
 
   const validatorIdsToProcess = await arrayPromises(
-    Array.from(minipoolsByPubkey.keys()).slice(
-      processedMinipoolCount, targetMinipoolCount).map(
-        pubkey => (() => getIndexFromPubkey(pubkey))
-      ),
+    pubkeys.slice(processedMinipoolCount, targetMinipoolCount).map(
+      pubkey => (() => getIndexFromPubkey(pubkey))
+    ),
     MAX_BEACON_RANGE,
     (numLeft) => log(`Getting validatorIds, ${numLeft} left`)
   )

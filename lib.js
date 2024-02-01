@@ -66,7 +66,7 @@ export const provider = new ethers.JsonRpcProvider(process.env.RPC)
 export const chainId = await provider.getNetwork().then(n => parseInt(n.chainId))
 export const beaconRpcUrl = process.env.BN
 
-export const db = open({path: 'db', encoder: {structuredClone: true}})
+export const db = open({path: 'db'})
 
 export const FAR_FUTURE_EPOCH = 2 ** 64 - 1
 export const secondsPerSlot = 12
@@ -173,7 +173,7 @@ export function multicall(calls) {
 
 export let minipoolsByPubkeyCount = db.get([chainId,'minipoolsByPubkeyCount']) ?? 0
 export const incrementMinipoolsByPubkeyCount = n => minipoolsByPubkeyCount += n
-export const minipoolsByPubkey = db.get([chainId,'minipoolsByPubkey']) ?? new Map()
+export const minipoolsByPubkey = db.get([chainId,'minipoolsByPubkey']) ?? {}
 export let minipoolCount
 export const updateMinipoolCount = async () => {
   minipoolCount = parseInt(
@@ -181,7 +181,7 @@ export const updateMinipoolCount = async () => {
   )
 }
 export const getMinipoolByPubkey = pubkey =>
-  minipoolsByPubkey.get(pubkey) ?? nullAddress
+  minipoolsByPubkey[pubkey] ?? nullAddress
 
 export const epochFromActivationInfo = activationInfo =>
   activationInfo.promoted ?

@@ -157,7 +157,7 @@ async function lookupEntity(entity) {
       await tryProcessNode(s)
       const nodeAddresses = db.get([chainId,'withdrawalAddress',s])
       if (nodeAddresses) {
-        for (const nodeAddress of nodeAddresses.values()) {
+        for (const nodeAddress of nodeAddresses) {
           if (starred || await rocketNodeManager.getNodeWithdrawalAddress(
                                  nodeAddress).then(w => w === s))
             await tryProcessNode(nodeAddress)

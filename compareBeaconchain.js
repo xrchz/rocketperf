@@ -15,7 +15,7 @@ const getActivationEpoch = (validatorIndex) => {
 }
 
 let lastFetch = Date.now()
-const minWait = 500
+const minWait = 1000
 
 const fetchBeaconchain = async (path) => {
   const url = new URL(path, 'https://beaconcha.in')

@@ -1,4 +1,11 @@
-import { db, chainId, log } from './lib.js'
+import { db, chainId, log, beaconRpcUrl } from './lib.js'
+
+const getHead = async (slot) => {
+  const url = new URL(`${beaconRpcUrl}/eth/v1/beacon/headers?slot=${slot}`)
+  const res = await fetch(url)
+  const json = await res.json()
+  return json.data[0].root
+}
 
 const activationEpochs = new Map()
 
@@ -73,6 +80,8 @@ const checkAttestationForEpoch = async (validatorIndex, epoch) => {
   }
 }
 
+const rewardKeys = ['head', 'target', 'source', 'inactivity']
+
 while (true) {
   const randomIndex = Math.floor(Math.random() * 1000000)
   const randomEpoch = Math.floor(Math.random() *  300000)
@@ -93,8 +102,30 @@ while (true) {
         throw new Error(`Attested discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epoch}`)
       if (attestation.slot != slot)
         throw new Error(`Slot discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epoch}`)
-      if (attested && attestation.attested.slot != attestedSlot)
-        throw new Error(`Attested slot discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epoch}`)
+      if (attested) {
+        if (attestation.attested.slot != attestedSlot)
+          throw new Error(`Attested slot discrepancy with beaconcha.in for validator ${validatorIndex} epoch ${epoch}`)
+        const timely = attestation.attested.slot - attestation.slot <= 1
+        if (!('reward' in attestation) || !('ideal' in attestation))
+          throw new Error(`Attestation for ${slot} missing reward for validator ${validatorIndex} epoch ${epoch}`)
+        else if (
+          timely &&
+          attestation.reward['head'] != attestation.ideal['head'] &&
+          rewardKeys.slice(1).every(k => attestation.reward[k] == attestation.ideal[k])
+        ) {
+          const canonicalHead = await getHead(attestation.slot)
+          if (attestation.attested.head == canonicalHead)
+            throw new Error(`Timely correct attestation for ${slot} has non-ideal head reward for validator ${validatorIndex} epoch ${epoch}`)
+          else
+            log(`${validatorIndex} had wrong head (${attestation.attested.head} vs ${canonicalHead}) for epoch ${epoch}`)
+        }
+        else if (timely && rewardKeys.some(k => attestation.reward[k] != attestation.ideal[k])) {
+          if (rewardKeys.some(k => attestation.reward[k].startsWith('-')))
+            log(`Timely attestation for ${slot} has non-ideal reward, but negative so assuming incorrect, for validator ${validatorIndex} epoch ${epoch}`)
+          else
+            throw new Error(`Timely attestation for ${slot} has non-ideal reward for validator ${validatorIndex} epoch ${epoch}`)
+        }
+      }
       break
     }
   }

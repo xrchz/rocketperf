@@ -1,15 +1,15 @@
 import { db, slotsPerEpoch, beaconRpcUrl, chainId } from './lib.js'
 
-const start = '1/validator/263507/attestation/227259'
+const start = [chainId,'validator',314965,'attestation',108713]
 
 const cleanupThenError = async (s) => { throw new Error(s) }
 
 let count = 0
 for (const key of db.getKeys({start})) {
   if (++count % 10000 == 0) console.log(`Up to key ${key}`)
-  const [chainIdLit, validatorLit, index, attestationLit, epoch] = key.split('/')
+  const [chainIdLit, validatorLit, index, attestationLit, epoch] = key
   if (chainIdLit == chainId && validatorLit === 'validator' && attestationLit === 'attestation') {
-    const nextEpoch = db.get(`${chainId}/validator/${index}/nextEpoch`)
+    const nextEpoch = db.get([chainId,'validator',index,'nextEpoch'])
     if (!nextEpoch || nextEpoch <= parseInt(epoch)) continue
     const attestation = db.get(key)
     if (!attestation.attested)

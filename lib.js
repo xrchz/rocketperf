@@ -66,7 +66,53 @@ export const provider = new ethers.JsonRpcProvider(process.env.RPC)
 export const chainId = await provider.getNetwork().then(n => parseInt(n.chainId))
 export const beaconRpcUrl = process.env.BN
 
-export const db = open({path: 'db'})
+const db = open({path: 'db'})
+
+const openShard = (chainId, minIndex, maxIndex) => {
+  const path = `db/${chainId}/${minIndex}-${maxIndex}`
+  return open({path})
+}
+
+const makeOpenShards = (chainId, step, bound) => {
+  let min = 0
+  const result = []
+  while (min + step <= bound) {
+    const minIndex = min
+    min += step
+    const maxIndex = min - 1
+    const shard = openShard(chainId, minIndex, maxIndex)
+    result.push({minIndex, maxIndex, shard})
+  }
+  return result
+}
+
+const dbs = {
+  1: makeOpenShards(1, 100_000, 1_300_000)
+}
+export const closeAllDBs = (chainId) => Promise.all(dbs[chainId].map(({shard}) => shard.close()))
+
+const findShard = (shards, index) => {
+  const copy = shards.slice()
+  while (copy.length) {
+    const m = Math.floor(copy.length / 2)
+    const {minIndex, maxIndex, shard} = copy[m]
+    if (index < minIndex)
+      copy.splice(m, Infinity)
+    else if (index > maxIndex)
+      copy.splice(0, m+1)
+    else
+      return shard
+  }
+  throw new Error(`Failed to find shard for ${index}`)
+}
+
+export const dbFor = (key) => {
+  if (key[1] === 'validator') {
+    const shard = findShard(dbs[key[0]], key[2])
+    return shard
+  }
+  else return db
+}
 
 export const FAR_FUTURE_EPOCH = 2 ** 64 - 1
 export const secondsPerSlot = 12

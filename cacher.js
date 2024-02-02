@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { fetch, setGlobalDispatcher, Agent } from 'undici'
 import { ethers } from 'ethers'
-import { db, provider, chainId, beaconRpcUrl, log, multicall, secondsPerSlot, rocketStorage,
+import { db, dbFor, closeAllDBs, provider, chainId, beaconRpcUrl, log, multicall, secondsPerSlot, rocketStorage,
          timeSlotConvs, slotsPerEpoch, epochOfSlot, minipoolAbi, arrayMin, arrayMax,
          finishMoreTasks, arrayPromises, interruptArrayPromises, filterResolved,
          minipoolsByPubkeyCount, minipoolsByPubkey, minipoolCount,
@@ -185,8 +185,10 @@ const fixAnkrPubkeyFromIndex = new Map([
 ])
 
 async function getActivationInfo(validatorIndex) {
-  const key = [chainId,'validator',validatorIndex,'activationInfo']
-  const activationInfo = db.get(key) ?? {}
+  const fullKey = [chainId,'validator',validatorIndex,'activationInfo']
+  const dba = dbFor(fullKey)
+  const key = fullKey.slice(2)
+  const activationInfo = dba.get(key) ?? {}
   let changed = false
   if (!('beacon' in activationInfo)) {
     const path = `/eth/v1/beacon/states/finalized/validators/${validatorIndex}`
@@ -237,7 +239,7 @@ async function getActivationInfo(validatorIndex) {
     else
       log(`Skipping setting solo/promotion for ${validatorIndex} whose minipool is not yet staking`)
   }
-  if (changed) await db.put(key, activationInfo)
+  if (changed) await dba.put(key, activationInfo)
   return activationInfo
 }
 
@@ -299,15 +301,17 @@ async function getAttestationDuties(epoch, validatorIds) {
       if (!running) break
       const selectedIndex = parseInt(validator_index)
       if (validatorIds.has(selectedIndex)) {
-        const attestationKey = [chainId,'validator',selectedIndex,'attestation',epoch]
-        const attestation = db.get(attestationKey) || {}
+        const fullAttestationKey = [chainId,'validator',selectedIndex,'attestation',epoch]
+        const dba = dbFor(fullAttestationKey)
+        const attestationKey = fullAttestationKey.slice(2)
+        const attestation = dba.get(attestationKey) || {}
         if (!('position' in attestation)) {
           // log(`Adding attestation duty @ ${slot} for validator ${selectedIndex}`)
           logAdded(selectedIndex, slot)
           attestation.slot = parseInt(slot)
           attestation.index = parseInt(index)
           attestation.position = position
-          promises.push(db.put(attestationKey, attestation))
+          promises.push(dba.put(attestationKey, attestation))
         }
       }
     }
@@ -356,14 +360,16 @@ async function processEpoch(epoch, validatorIds) {
   for (const [position, validator_index] of syncValidators.entries()) {
     const validatorIndex = parseInt(validator_index)
     if (validatorIds.has(validatorIndex)) {
-      const syncKey = [chainId,'validator',validatorIndex,'sync',epoch]
-      const sync = db.get(syncKey) || {}
+      const fullSyncKey = [chainId,'validator',validatorIndex,'sync',epoch]
+      const dbs = dbFor(fullSyncKey)
+      const syncKey = fullSyncKey.slice(2)
+      const sync = dbs.get(syncKey) || {}
       if (!('position' in sync)) {
         log(`Adding sync duty for epoch ${epoch} for validator ${validatorIndex}`)
         sync.position = position
         sync.missed = []
         sync.rewards = []
-        syncUpdates.set(syncKey.join('/'), {syncKey, sync})
+        syncUpdates.set(fullSyncKey.join('/'), {dbs, syncKey, sync})
       }
     }
   }
@@ -372,7 +378,8 @@ async function processEpoch(epoch, validatorIds) {
   log(`Getting attestations and syncs for ${epoch}`)
 
   for (const validatorIndex of validatorIds) {
-    if (!(epoch <= db.get([chainId,'validator',validatorIndex,'dutiesEpoch'])))
+    const key = [chainId,'validator',validatorIndex,'dutiesEpoch']
+    if (!(epoch <= dbFor(key).get(key.slice(2))))
       await cleanupThenError(`dutiesEpoch for ${validatorIndex} too low for ${epoch}`)
   }
 
@@ -401,14 +408,16 @@ async function processEpoch(epoch, validatorIds) {
       const attestedBits = hexStringToBitlist(aggregation_bits)
       const attestationEpoch = epochOfSlot(parseInt(slot))
       validatorIdsArray.forEach(validatorIndex => {
-        const attestationKey = [chainId,'validator',validatorIndex,'attestation',attestationEpoch]
-        const attestation = db.get(attestationKey)
+        const fullAttestationKey = [chainId,'validator',validatorIndex,'attestation',attestationEpoch]
+        const attestationKey = fullAttestationKey.slice(2)
+        const dba = dbFor(fullAttestationKey)
+        const attestation = dba.get(attestationKey)
         if (attestation?.slot == slot && attestation.index == index && !(attestation.attested?.slot <= searchSlot)) {
           if (attestedBits[attestation.position]) {
             attestation.attested = { slot: searchSlot, head: beacon_block_root, source, target }
             // log(`Adding attestation for ${slot} (${attestationEpoch}) for validator ${validatorIndex} @ ${searchSlot}`)
             logAdded.push({slot: searchSlot, validatorIndex, attestationEpoch})
-            attestationUpdates.set(attestationKey.join('/'), {attestationKey, attestation})
+            attestationUpdates.set(fullAttestationKey.join('/'), {dba, attestationKey, attestation})
           }
         }
       })
@@ -416,12 +425,14 @@ async function processEpoch(epoch, validatorIds) {
     if (blockData.sync_aggregate) {
       const syncBits = hexStringToBitvector(blockData.sync_aggregate.sync_committee_bits)
       validatorIdsArray.forEach(validatorIndex => {
-        const syncKey = [chainId,'validator',validatorIndex,'sync',epoch]
-        const syncKeyStr = syncKey.join('/')
-        const sync = syncUpdates.get(syncKeyStr)?.sync || db.get(syncKey)
+        const fullSyncKey = [chainId,'validator',validatorIndex,'sync',epoch]
+        const syncKey = fullSyncKey.slice(2)
+        const fullSyncKeyStr = fullSyncKey.join('/')
+        const dbs = dbFor(fullSyncKey)
+        const sync = syncUpdates.get(fullSyncKeyStr)?.sync || dbs.get(syncKey)
         if (sync && !syncBits[sync.position] && !sync.missed.includes(searchSlot)) {
           sync.missed.push(searchSlot)
-          syncUpdates.set(syncKeyStr, {syncKey, sync})
+          syncUpdates.set(fullSyncKeyStr, {dbs, syncKey, sync})
         }
       })
 
@@ -436,9 +447,11 @@ async function processEpoch(epoch, validatorIds) {
       })
       for (const {validator_index, reward} of syncRewards) {
         const validatorIndex = parseInt(validator_index)
-        const syncKey = [chainId,'validator',validatorIndex,'sync',epoch]
-        const syncKeyStr = syncKey.join('/')
-        const sync = syncUpdates.get(syncKeyStr)?.sync || db.get(syncKey)
+        const fullSyncKey = [chainId,'validator',validatorIndex,'sync',epoch]
+        const syncKey = fullSyncKey.slice(2)
+        const fullSyncKeyStr = fullSyncKey.join('/')
+        const dbs = dbFor(fullSyncKey)
+        const sync = syncUpdates.get(fullSyncKeyStr)?.sync || dbs.get(syncKey)
         if (!sync) {
           if (reward !== '0')
             await cleanupThenError(`Non-zero reward ${reward} but no sync object at ${syncKey}`)
@@ -448,7 +461,7 @@ async function processEpoch(epoch, validatorIds) {
           // log(`Adding sync reward for ${searchSlot} for validator ${validator_index}: ${reward}`)
           logAdded.push({slot: searchSlot, validatorIndex: validator_index, reward})
           sync.rewards.push({slot: searchSlot, reward})
-          syncUpdates.set(syncKeyStr, {syncKey, sync})
+          syncUpdates.set(fullSyncKeyStr, {dbs, syncKey, sync})
         }
       }
     }
@@ -462,7 +475,7 @@ async function processEpoch(epoch, validatorIds) {
       log(`Added ${logAdded.length - addedAttestations} sync rewards for ${epoch}`)
   }
 
-  syncUpdates.forEach(({syncKey, sync}) => promises.push(db.put(syncKey, sync)))
+  syncUpdates.forEach(({dbs, syncKey, sync}) => promises.push(dbs.put(syncKey, sync)))
 
   if (!running) return
   log(`Getting attestation rewards for ${epoch}`)
@@ -488,9 +501,11 @@ async function processEpoch(epoch, validatorIds) {
   })
   for (const {validator_index, head, target, source, inactivity} of attestationRewards.total_rewards) {
     if (!running) break
-    const attestationKey = [chainId,'validator',parseInt(validator_index),'attestation',epoch]
-    const attestationKeyStr = attestationKey.join('/')
-    const attestation = attestationUpdates.get(attestationKeyStr)?.attestation || db.get(attestationKey)
+    const fullAttestationKey = [chainId,'validator',parseInt(validator_index),'attestation',epoch]
+    const attestationKey = fullAttestationKey.slice(2)
+    const fullAttestationKeyStr = fullAttestationKey.join('/')
+    const dba = dbFor(fullAttestationKey)
+    const attestation = attestationUpdates.get(fullAttestationKeyStr)?.attestation || dba.get(attestationKey)
     if (attestation && !('reward' in attestation && 'ideal' in attestation)) {
       const effectiveBalance = effectiveBalances.get(validator_index)
       attestation.reward = {head, target, source, inactivity}
@@ -501,13 +516,13 @@ async function processEpoch(epoch, validatorIds) {
         attestation.ideal[key] = ideal[key]
       // log(`Adding attestation reward for epoch ${epoch} for validator ${validator_index}: ${Object.entries(attestation.reward)} / ${Object.entries(attestation.ideal)}`)
       logAdded.push(validator_index)
-      attestationUpdates.set(attestationKeyStr, {attestationKey, attestation})
+      attestationUpdates.set(fullAttestationKeyStr, {dba, attestationKey, attestation})
     }
   }
   log(`Added ${logAdded.length} attestation rewards for epoch ${epoch}`)
 
-  attestationUpdates.forEach(({attestationKey, attestation}) =>
-    promises.push(db.put(attestationKey, attestation))
+  attestationUpdates.forEach(({dba, attestationKey, attestation}) =>
+    promises.push(dba.put(attestationKey, attestation))
   )
 
   if (!running) return
@@ -526,8 +541,10 @@ async function processEpoch(epoch, validatorIds) {
     if (!running) break
     const validatorIndex = parseInt(validator_index)
     if (validatorIds.has(validatorIndex)) {
-      const proposalKey = [chainId,'validator',validatorIndex,'proposal',parseInt(slot)]
-      const proposal = db.get(proposalKey) || {}
+      const fullProposalKey = [chainId,'validator',validatorIndex,'proposal',parseInt(slot)]
+      const dbp = dbFor(fullProposalKey)
+      const proposalKey = fullProposalKey.slice(2)
+      const proposal = dbp.get(proposalKey) || {}
       if (!('reward' in proposal)) {
         const proposalRewardUrl = new URL(`${beaconRpcUrl}/eth/v1/beacon/rewards/blocks/${slot}`)
         const response = await tryfetch(proposalRewardUrl)
@@ -542,7 +559,7 @@ async function processEpoch(epoch, validatorIds) {
           proposal.reward = reward
         }
         else await cleanupThenError(`Got ${response.status} fetching block rewards @ ${slot}`)
-        promises.push(db.put(proposalKey, proposal))
+        promises.push(dbp.put(proposalKey, proposal))
       }
     }
   }
@@ -567,11 +584,13 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
   if (!STANDARD_START_EPOCH) {
     let changed
     for (const validatorIndex of validatorActivationEpochs.keys()) {
-      const standardKey = [chainId,'validator',validatorIndex,'nextEpoch']
-      const standardNextEpoch = db.get(standardKey)
+      const fullStandardKey = [chainId,'validator',validatorIndex,'nextEpoch']
+      const standardKey = fullStandardKey.slice(2)
+      const dbv = dbFor(fullStandardKey)
+      const standardNextEpoch = dbv.get(standardKey)
       if (standardNextEpoch >= OVERRIDE_START_EPOCH) {
-        const overrideKey = [chainId,'validator',validatorIndex,'nextEpoch',...startKey]
-        const overrideNextEpoch = db.get(overrideKey)
+        const overrideKey = [validatorIndex,'nextEpoch',...startKey]
+        const overrideNextEpoch = dbv.get(overrideKey)
         const actionMsg = overrideNextEpoch > standardNextEpoch ?
           `: merging up to ${overrideNextEpoch}` :
           (overrideNextEpoch ?
@@ -579,14 +598,14 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
             ' and has no overrideNextEpoch so will use standard')
         log(`Standard nextEpoch for ${validatorIndex}, ${standardNextEpoch}, has reached ${OVERRIDE_START_EPOCH}${actionMsg}`)
         if (overrideNextEpoch > standardNextEpoch) {
-          await db.transaction(() => {
-            db.put(standardKey, overrideNextEpoch)
-            db.remove(overrideKey)
+          await dbv.transaction(() => {
+            dbv.put(standardKey, overrideNextEpoch)
+            dbv.remove(overrideKey)
           })
           changed = true
         }
         else if (overrideNextEpoch) {
-          await db.remove(overrideKey)
+          await dbv.remove(overrideKey)
           changed = true
         }
         else {
@@ -605,8 +624,8 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
     ([validatorIndex, activationEpoch]) => [
       validatorIndex,
       Math.max(
-        db.get(
-          [chainId,'validator',validatorIndex,...(alreadyOverridden.has(validatorIndex) ? [uptoKeyBase] : uptoKey)]
+        dbFor([chainId,'validator',validatorIndex]).get(
+          [validatorIndex,...(alreadyOverridden.has(validatorIndex) ? [uptoKeyBase] : uptoKey)]
         ) ?? startDefault,
         activationEpoch
       )
@@ -670,11 +689,13 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
         const nextEpoch = epoch + 1
         for (const validatorIndex of validatorIds.keys()) {
           if (!running) break
-          const nextEpochKey = [chainId,'validator',validatorIndex,...(alreadyOverridden.has(validatorIndex) ? [uptoKeyBase] : uptoKey)]
-          const currentValue = db.get(nextEpochKey)
+          const fullNextEpochKey = [chainId,'validator',validatorIndex,...(alreadyOverridden.has(validatorIndex) ? [uptoKeyBase] : uptoKey)]
+          const dbv = dbFor(fullNextEpochKey)
+          const nextEpochKey = fullNextEpochKey.slice(2)
+          const currentValue = dbv.get(nextEpochKey)
           if (!currentValue || currentValue < nextEpoch) {
             updated.push(validatorIndex)
-            promises.push(db.put(nextEpochKey, nextEpoch))
+            promises.push(dbv.put(nextEpochKey, nextEpoch))
           }
         }
         if (updated.length)
@@ -757,8 +778,8 @@ async function cleanup() {
   log(`Awaiting tasks...`)
   await Promise.allSettled(tasks)
   await finishMoreTasks()
-  log(`Closing db...`)
-  await db.close()
+  log(`Closing dbs...`)
+  await closeAllDBs(chainId)
 }
 
 process.on('SIGINT', async () => {

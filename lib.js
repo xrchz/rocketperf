@@ -66,7 +66,7 @@ export const provider = new ethers.JsonRpcProvider(process.env.RPC)
 export const chainId = await provider.getNetwork().then(n => parseInt(n.chainId))
 export const beaconRpcUrl = process.env.BN
 
-const db = open({path: 'db'})
+export const db = open({path: 'db'})
 
 const openShard = (chainId, minIndex, maxIndex) => {
   const path = `db/${chainId}/${minIndex}-${maxIndex}`
@@ -111,7 +111,7 @@ export const dbFor = (key) => {
     const shard = findShard(dbs[key[0]], key[2])
     return shard
   }
-  else return db
+  else throw new Error(`${key} not suitable for shards`)
 }
 
 export const FAR_FUTURE_EPOCH = 2 ** 64 - 1

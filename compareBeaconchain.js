@@ -1,4 +1,4 @@
-import { db, chainId, log, beaconRpcUrl } from './lib.js'
+import { dbFor, chainId, log, beaconRpcUrl } from './lib.js'
 import { spawnSync } from 'node:child_process'
 
 const getHead = async (slot) => {
@@ -14,7 +14,7 @@ const getActivationEpoch = (validatorIndex) => {
   const cached = activationEpochs.get(validatorIndex)
   if (typeof cached != 'undefined') return cached
   const key = [chainId,'validator',validatorIndex,'activationInfo']
-  const activationInfo = db.get(key)
+  const activationInfo = dbFor(key).get(key.slice(2))
   const epoch = activationInfo.beacon
   if (typeof epoch != 'number')
     throw new Error(`Unexpected activation epoch for ${validatorIndex}: ${epoch}`)
@@ -83,9 +83,9 @@ const checkAttestationForEpoch = async (validatorIndex, epoch) => {
 
 const rewardKeys = ['head', 'target', 'source', 'inactivity']
 
-async function checkKey(key, validatorIndex, epoch) {
+async function checkKey(dbr, key, validatorIndex, epoch) {
   log(`Checking ${key}`)
-  const attestation = db.get(key)
+  const attestation = dbr.get(key)
   const {slot, attested, attestedSlot} = await checkAttestationForEpoch(validatorIndex, epoch).catch((e) => {
     if (e.message.startsWith('Failed')) return checkAttestationForEpoch(validatorIndex, epoch)
     else throw e
@@ -123,18 +123,19 @@ async function checkKey(key, validatorIndex, epoch) {
 while (true) {
   const randomIndex = Math.floor(Math.random() * 1000000)
   const randomEpoch = Math.floor(Math.random() *  300000)
-  const start = [chainId,'validator',randomIndex,'attestation',randomEpoch]
-  const end = [chainId,'validator',randomIndex,'attestation','']
-  for (const key of db.getKeys({start, end, snapshot: false})) {
-    const [chainIdLit, validatorLit, validatorIndex, attestationLit, epoch] = key
-    if (chainIdLit == chainId && validatorLit === 'validator' && attestationLit === 'attestation') {
-      const nextEpoch = db.get([chainId,'validator',validatorIndex,'nextEpoch'])
+  const start = [randomIndex,'attestation',randomEpoch]
+  const end = [randomIndex,'attestation','']
+  const dbr = dbFor([chainId, 'validator', randomIndex])
+  for (const key of dbr.getKeys({start, end, snapshot: false})) {
+    const [validatorIndex, attestationLit, epoch] = key
+    if (attestationLit === 'attestation') {
+      const nextEpoch = dbr.get([validatorIndex,'nextEpoch'])
       if (!nextEpoch || nextEpoch <= epoch) break // this validator no good for epoch or above
-      await checkKey(key, validatorIndex, epoch).catch(e => {
+      await checkKey(dbr, key, validatorIndex, epoch).catch(e => {
         if (e.message.includes('discrepancy')) {
           log(`Attempting attestation fixup of ${validatorIndex} at ${epoch}...`)
           spawnSync('node', ['cacher'], {env: {'FIXUP_EPOCHS': epoch.toString(), 'FIXUP_VALIDATORS': validatorIndex.toString()}})
-          return checkKey(key, validatorIndex, epoch).then(() => log(`Fixup succeeded`))
+          return checkKey(dbr, key, validatorIndex, epoch).then(() => log(`Fixup succeeded`))
         }
         else throw e
       })

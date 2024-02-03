@@ -134,7 +134,12 @@ while (true) {
       await checkKey(dbr, key, validatorIndex, epoch).catch(e => {
         if (e.message.includes('discrepancy')) {
           log(`Attempting attestation fixup of ${validatorIndex} at ${epoch}...`)
-          spawnSync('node', ['cacher'], {env: {'FIXUP_EPOCHS': epoch.toString(), 'FIXUP_VALIDATORS': validatorIndex.toString()}})
+          spawnSync('node', ['cacher'],
+            {env:
+              {'FIXUP_EPOCHS': `${epoch},${epoch+1}`,
+               'FIXUP_VALIDATORS': validatorIndex.toString(),
+               'NUM_EPOCH_TASKS': '1'}
+            })
           return checkKey(dbr, key, validatorIndex, epoch).then(() => log(`Fixup succeeded`))
         }
         else throw e

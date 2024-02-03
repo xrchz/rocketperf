@@ -245,6 +245,7 @@ async function getActivationInfo(validatorIndex) {
 
 const validatorActivationEpochs = new Map()
 
+// TODO: ignore exited validators?
 const getValidatorsIdsForEpoch = (validatorNextEpochs, epoch) => new Set(
   validatorNextEpochs.flatMap(
     ([id, nextEpoch]) => nextEpoch <= epoch ? [id] : []
@@ -594,7 +595,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
         const actionMsg = overrideNextEpoch > standardNextEpoch ?
           `: merging up to ${overrideNextEpoch}` :
           (overrideNextEpoch ?
-            `, but ${overrideNextEpoch} is also less so will delete it` :
+            `, but override, ${overrideNextEpoch}, is less so will delete it` :
             ' and has no overrideNextEpoch so will use standard')
         log(`Standard nextEpoch for ${validatorIndex}, ${standardNextEpoch}, has reached ${OVERRIDE_START_EPOCH}${actionMsg}`)
         if (overrideNextEpoch > standardNextEpoch) {
@@ -620,6 +621,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
     }
   }
 
+  // TODO: ignore exited validators?
   const validatorNextEpochs = Array.from(validatorActivationEpochs.entries()).map(
     ([validatorIndex, activationEpoch]) => [
       validatorIndex,

@@ -364,7 +364,7 @@ io.on('connection', socket => {
         const syncs = day.syncs
         syncs.duties += 1
         syncs.missed += syncMissed
-        syncs.reward += BigInt(syncReward.reward)
+        syncs.reward += BigInt(syncReward?.reward ?? 0)
         syncs.slots.add(slot)
       }
 

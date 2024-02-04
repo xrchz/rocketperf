@@ -132,7 +132,7 @@ while (true) {
       const nextEpoch = dbr.get([validatorIndex,'nextEpoch'])
       if (!nextEpoch || nextEpoch <= epoch) break // this validator no good for epoch or above
       await checkKey(dbr, key, validatorIndex, epoch).catch(e => {
-        if (e.message.includes('discrepancy')) {
+        if (e.message.includes('discrepancy') || e.message.includes('missing reward')) {
           log(`Attempting attestation fixup of ${validatorIndex} at ${epoch}...`)
           spawnSync('node', ['cacher'],
             {env:

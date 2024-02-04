@@ -410,15 +410,16 @@ async function processEpoch(epoch, validatorIds) {
       const attestationEpoch = epochOfSlot(parseInt(slot))
       validatorIdsArray.forEach(validatorIndex => {
         const fullAttestationKey = [chainId,'validator',validatorIndex,'attestation',attestationEpoch]
+        const fullAttestationKeyStr = fullAttestationKey.join('/')
         const attestationKey = fullAttestationKey.slice(2)
         const dba = dbFor(fullAttestationKey)
-        const attestation = dba.get(attestationKey)
+        const attestation = attestationUpdates.get(fullAttestationKeyStr)?.attestation || dba.get(attestationKey)
         if (attestation?.slot == slot && attestation.index == index && !(attestation.attested?.slot <= searchSlot)) {
           if (attestedBits[attestation.position]) {
             attestation.attested = { slot: searchSlot, head: beacon_block_root, source, target }
             // log(`Adding attestation for ${slot} (${attestationEpoch}) for validator ${validatorIndex} @ ${searchSlot}`)
             logAdded.push({slot: searchSlot, validatorIndex, attestationEpoch})
-            attestationUpdates.set(fullAttestationKey.join('/'), {dba, attestationKey, attestation})
+            attestationUpdates.set(fullAttestationKeyStr, {dba, attestationKey, attestation})
           }
         }
       })

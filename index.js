@@ -348,14 +348,9 @@ function updateSelectedHeading(n1) {
   if (n) {
     const s = n > 1 ? 's' : ''
     selectedHeading.innerText = `${n} Selected Validator${s}`
-    if (n > 1)
-      columnToolsRow.classList.remove('hidden')
-    else
-      columnToolsRow.classList.add('hidden')
   }
   else {
     selectedHeading.innerText = 'Selected Validators'
-    columnToolsRow.classList.add('hidden')
   }
   selectedHeading.classList.remove('loading')
 }

@@ -25,11 +25,13 @@ const getActivationEpoch = (validatorIndex) => {
 let lastFetch = Date.now()
 const minWait = 1000
 
+const sleep = (n) => new Promise(resolve => setTimeout(resolve, n))
+
 const fetchBeaconchain = async (path) => {
   const url = new URL(path, 'https://beaconcha.in')
   const now = Date.now()
   const toWait = lastFetch + minWait - now
-  if (0 < toWait) await new Promise(resolve => setTimeout(resolve, toWait))
+  if (0 < toWait) await sleep(toWait)
   const headers = {
     'Accept': 'application/json',
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0'
@@ -141,12 +143,14 @@ while (true) {
                'FIXUP_VALIDATORS': validatorIndex.toString(),
                'NUM_EPOCH_TASKS': '1'}
             })
-          return checkKey(dbr, key, validatorIndex, epoch).then(
-            () => log(`Fixup succeeded`),
-            (e) => {
-              log(`Fixup failed with status/signal/error ${res.status}/${res.signal}/${res.error?.message}.\nStdout was:\n${res.stdout}\nStderr was:\n${res.stderr}\n`)
-              throw e
-            }
+          return sleep(1000).then(() =>
+            checkKey(dbr, key, validatorIndex, epoch).then(
+              () => log(`Fixup succeeded`),
+              (e) => {
+                log(`Fixup failed with status/signal/error ${res.status}/${res.signal}/${res.error?.message}.\nStdout was:\n${res.stdout}\nStderr was:\n${res.stderr}\n`)
+                throw e
+              }
+            )
           )
         }
         else throw e

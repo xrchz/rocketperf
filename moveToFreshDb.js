@@ -1,6 +1,6 @@
 import { open } from 'lmdb'
 import { readFileSync } from 'node:fs'
-const oldDbPath = '/home/ramana/lh/dbold'
+const oldDbPath = '/home/ramana/lh/db/old'
 const newDbPath = '/home/ramana/lh/db'
 const oldDb = open({path: oldDbPath})
 const newDb = open({path: newDbPath})
@@ -19,7 +19,7 @@ const start = [chainId, 'w']
 */
 // Up to 1,validator,271871,attestation,219546, skipped 300000000 already existing...
 // Up to 1,validator,275213,attestation,117673, skipped 43600000 already existing...
-const start = [1,'validator',275213]
+const start = undefined
 const end = undefined
 let existCount = 0n
 const batchSize = parseInt(process.env.BS) || 8192
@@ -31,7 +31,7 @@ async function clearBatch() {
       newDb.put(newKey, newValue)
     }
   })
-  console.log(`Replaced up to ${lastKey}`)
+  console.log(`Copied up to ${lastKey}`)
 }
 for (const {key, value} of oldDb.getRange({start, end})) {
   let newKey = key

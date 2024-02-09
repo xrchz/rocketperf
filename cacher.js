@@ -443,7 +443,7 @@ async function processEpoch(epoch, validatorIds) {
       )
       const syncRewards = await tryfetch(syncRewardsUrl, postOptions).then(async res => {
         if (res.status !== 200)
-          await cleanupThenError(`Got ${res.status} fetching sync rewards @ ${searchSlot}: ${await res.text()}`)
+          await cleanupThenError(`Got ${res.status} fetching ${syncRewardsUrl}: ${await res.text()}`)
         const json = await res.json()
         return json.data
       })

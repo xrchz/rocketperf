@@ -593,13 +593,13 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
       if (standardNextEpoch >= OVERRIDE_START_EPOCH) {
         const overrideKey = [validatorIndex,'nextEpoch',...startKey]
         const overrideNextEpoch = dbv.get(overrideKey)
-        const actionMsg = overrideNextEpoch > standardNextEpoch ?
+        const actionMsg = overrideNextEpoch >= standardNextEpoch ?
           `: merging up to ${overrideNextEpoch}` :
           (overrideNextEpoch ?
             `, but override, ${overrideNextEpoch}, is less so will delete it` :
             ' and has no overrideNextEpoch so will use standard')
         log(`Standard nextEpoch for ${validatorIndex}, ${standardNextEpoch}, has reached ${OVERRIDE_START_EPOCH}${actionMsg}`)
-        if (overrideNextEpoch > standardNextEpoch) {
+        if (overrideNextEpoch >= standardNextEpoch) {
           await dbv.transaction(() => {
             dbv.put(standardKey, overrideNextEpoch)
             dbv.remove(overrideKey)

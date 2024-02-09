@@ -585,11 +585,11 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
 
   if (!STANDARD_START_EPOCH) {
     let changed
-    for (const validatorIndex of validatorActivationEpochs.keys()) {
+    for (const [validatorIndex, activationEpoch] of validatorActivationEpochs.entries()) {
       const fullStandardKey = [chainId,'validator',validatorIndex,'nextEpoch']
       const standardKey = fullStandardKey.slice(2)
       const dbv = dbFor(fullStandardKey)
-      const standardNextEpoch = dbv.get(standardKey)
+      const standardNextEpoch = dbv.get(standardKey) ?? activationEpoch
       if (standardNextEpoch >= OVERRIDE_START_EPOCH) {
         const overrideKey = [validatorIndex,'nextEpoch',...startKey]
         const overrideNextEpoch = dbv.get(overrideKey)

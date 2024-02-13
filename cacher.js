@@ -800,8 +800,18 @@ if (process.env.FIXUP_EPOCHS) {
   const validatorIds = new Set(
     process.env.FIXUP_VALIDATORS.split(',').map(i => parseInt(i))
   )
-  for (const epoch of epochs)
-    await processEpoch(epoch, validatorIds)
+  while (running && epochs.length) {
+    const epoch = epochs.shift()
+    const state = {}
+    const onCompletion = () => { state.resolved = true }
+    tasks.push({
+      state, task: processEpoch(epoch, validatorIds).then(onCompletion)
+    })
+    while (tasks.length >= NUM_EPOCH_TASKS) {
+      await Promise.race(tasks.map(({task}) => task))
+      filterResolved(tasks)
+    }
+  }
   await cleanup()
 }
 else if (!process.env.ONLY_BLOCK_LISTENER) {

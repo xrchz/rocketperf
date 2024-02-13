@@ -1,7 +1,7 @@
 import { open } from 'lmdb'
 import { readFileSync } from 'node:fs'
-const oldDbPath = '/home/ramana/lh/db/old'
-const newDbPath = '/home/ramana/lh/db'
+const oldDbPath = '/home/ramana/lh/db/1/200000-299999'
+const newDbPath = '/home/ramana/bf3d/tmp/250000-299999'
 const oldDb = open({path: oldDbPath})
 const newDb = open({path: newDbPath})
 const chainId = 1
@@ -19,7 +19,7 @@ const start = [chainId, 'w']
 */
 // Up to 1,validator,271871,attestation,219546, skipped 300000000 already existing...
 // Up to 1,validator,275213,attestation,117673, skipped 43600000 already existing...
-const start = undefined
+const start = [250000]
 const end = undefined
 let existCount = 0n
 const batchSize = parseInt(process.env.BS) || 8192
@@ -34,14 +34,15 @@ async function clearBatch() {
   console.log(`Copied up to ${lastKey}`)
 }
 for (const {key, value} of oldDb.getRange({start, end})) {
-  let newKey = key
-  if (newDb.doesExist(newKey)) {
-    if (++existCount % 100000n == 0n)
-      console.log(`Up to ${key}, skipped ${existCount} already existing...`)
-    continue
-  }
+  let newKey
   let newValue = value
-  if (typeof key == 'string') {
+  if (key.length >= 3 && key[1] == 'validator')
+    newKey = `${key} should be sharded`
+  else
+    newKey = key
+  if (!(key instanceof Array)) {
+    throw new Error(`Unexpected non-array key ${key}`)
+    /*
     newKey = key.split('/')
     if (newKey[0] != chainId) throw new Error(`Unexpected chainId ${newKey[0]}`)
     newKey[0] = parseInt(chainId)
@@ -51,12 +52,14 @@ for (const {key, value} of oldDb.getRange({start, end})) {
       else if ((newKey[i] === 'nextEpoch' || newKey[i] === 'dutiesEpoch') && i+1 < newKey.length)
         newKey[i+1] = parseInt(newKey[++i])
     }
+    */
   }
   if (newDb.doesExist(newKey)) {
     if (++existCount % 100000n == 0n)
       console.log(`Up to ${key}, skipped ${existCount} already existing...`)
     continue
   }
+  /*
   if (value instanceof Set) {
     console.log(`Replacing Set for ${key}`)
     newValue = Array.from(value.keys())
@@ -68,6 +71,7 @@ for (const {key, value} of oldDb.getRange({start, end})) {
       newValue[k] = v
     }
   }
+  */
   batch.push({key, newKey, newValue, value})
   if (batch.length >= batchSize) await clearBatch()
 }

@@ -73,12 +73,14 @@ const openShard = (chainId, minIndex, maxIndex) => {
   return open({path})
 }
 
-const makeOpenShards = (chainId, step, bound) => {
+const makeOpenShards = (chainId, defaultStep, bound, exceptions) => {
   let min = 0
+  let step = exceptions[min] || defaultStep
   const result = []
   while (min + step <= bound) {
     const minIndex = min
     min += step
+    step = exceptions[min] || defaultStep
     const maxIndex = min - 1
     const shard = openShard(chainId, minIndex, maxIndex)
     result.push({minIndex, maxIndex, shard})
@@ -87,7 +89,7 @@ const makeOpenShards = (chainId, step, bound) => {
 }
 
 const dbs = {
-  1: makeOpenShards(1, 100_000, 1_300_000)
+  1: makeOpenShards(1, 100_000, 1_300_000, {200_000: 50_000, 250_000: 50_000})
 }
 export const closeAllDBs = (chainId) => Promise.all(dbs[chainId].map(({shard}) => shard.close()))
 

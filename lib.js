@@ -35,7 +35,9 @@ const moreTasksLocked = new Uint8Array(1)
 const moreTasksPending = []
 const moreTasks = []
 
-export const finishMoreTasks = () => Promise.allSettled(moreTasks.concat(moreTasksPending))
+export const finishMoreTasks = () => Promise.allSettled(
+  moreTasks.concat(moreTasksPending).map(({task}) => task)
+)
 
 let runningArrayPromises = true
 export const interruptArrayPromises = () => runningArrayPromises = false

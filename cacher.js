@@ -722,6 +722,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
       filterResolved(tasks)
     }
   }
+  await Promise.allSettled(tasks.map(({task}) => task))
 }
 
 async function processEpochs() {
@@ -781,7 +782,7 @@ async function cleanup() {
   await provider.removeAllListeners('block')
   await blockLock
   log(`Awaiting tasks...`)
-  await Promise.allSettled(tasks)
+  await Promise.allSettled(tasks.map(({task}) => task))
   await finishMoreTasks()
   log(`Closing dbs...`)
   await closeAllDBs(chainId)

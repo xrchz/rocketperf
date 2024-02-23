@@ -729,6 +729,8 @@ async function processEpochs() {
   const pubkeys = Object.keys(minipoolsByPubkey)
   const targetMinipoolCount = pubkeys.length
 
+  if (!running) return
+
   log(`targetMinipoolCount: ${targetMinipoolCount}, processedMinipoolCount: ${processedMinipoolCount}`)
 
   const validatorIdsToProcess = await arrayPromises(
@@ -818,7 +820,7 @@ if (process.env.FIXUP_EPOCHS) {
   await cleanup()
 }
 else if (!process.env.ONLY_BLOCK_LISTENER) {
-  while (true) {
+  while (running) {
     await processEpochs()
     if (STANDARD_FINAL_SLOT)
       await new Promise(resolve =>

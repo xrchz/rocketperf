@@ -584,7 +584,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
   const alreadyOverridden = new Set()
 
   if (!STANDARD_START_EPOCH) {
-    let changed
+    const changes = []
     for (const [validatorIndex, activationEpoch] of validatorActivationEpochs.entries()) {
       const fullStandardKey = [chainId,'validator',validatorIndex,'nextEpoch']
       const standardKey = fullStandardKey.slice(2)
@@ -601,24 +601,26 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
             ' and has no overrideNextEpoch so will use standard')
         log(`Standard nextEpoch for ${validatorIndex}, ${standardNextEpoch}, has reached ${OVERRIDE_START_EPOCH}${actionMsg}`)
         if (overrideNextEpoch >= standardNextEpoch) {
-          await dbv.transaction(() => {
-            dbv.put(standardKey, overrideNextEpoch)
-            dbv.remove(overrideKey)
-          })
-          changed = true
+          changes.push(dbv.transaction(
+            () => {
+              dbv.put(standardKey, overrideNextEpoch)
+              dbv.remove(overrideKey)
+            })
+          )
         }
         else if (overrideNextEpoch) {
-          await dbv.remove(overrideKey)
-          changed = true
+          changes.push(dbv.remove(overrideKey))
         }
         else {
-          if (!standardExists) await dbv.put(standardKey, standardNextEpoch)
+          if (!standardExists)
+            await dbv.put(standardKey, standardNextEpoch)
           alreadyOverridden.add(validatorIndex)
         }
       }
     }
-    if (changed) {
-      log(`Changed nextEpoch overrides, exiting...`)
+    if (changes.length) {
+      log(`Changed nextEpoch overrides...`)
+      await Promise.all(changes)
       await cleanup()
       process.exit()
     }

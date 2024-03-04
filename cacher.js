@@ -801,13 +801,24 @@ process.on('SIGINT', async () => {
   process.exit()
 })
 
+import { createInterface } from 'node:readline'
+import { createReadStream } from 'node:fs'
+
 if (process.env.FIXUP_EPOCHS) {
-  const epochs = process.env.FIXUP_EPOCHS.split(',').map(e => parseInt(e))
-  const validatorIds = new Set(
-    process.env.FIXUP_VALIDATORS.split(',').map(i => parseInt(i))
-  )
-  while (running && epochs.length) {
-    const epoch = epochs.shift()
+  const getInts = async (s) => {
+    if (s.endsWith('.txt')) {
+      const vs = new Set()
+      for await (const line of createInterface({input: createReadStream(s)}))
+        vs.add(parseInt(line))
+      return vs
+    }
+    else
+      return new Set(s.split(',').map(i => parseInt(i)))
+  }
+  const epochs = await getInts(process.env.FIXUP_EPOCHS)
+  const validatorIds = await getInts(process.env.FIXUP_VALIDATORS || '')
+  for (const epoch of epochs.values()) {
+    if (!running) break
     const state = {}
     const onCompletion = () => { state.resolved = true }
     tasks.push({

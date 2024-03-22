@@ -681,6 +681,10 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
     const validatorIds = getValidatorsIdsForEpoch(validatorNextEpochs, epoch)
     const state = {}
     const onCompletion = async () => {
+      if (!running) {
+        state.resolved = true
+        return
+      }
       const epochIndex = await pendingEpochsLock.then(() => {
         pendingEpochsLock = new Promise(resolve => {
           const epochIndex = pendingEpochs.indexOf(epoch)
@@ -703,6 +707,10 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
             updated.push(validatorIndex)
             promises.push(dbv.put(nextEpochKey, nextEpoch))
           }
+        }
+        if (!running) {
+          state.resolved = true
+          return
         }
         if (updated.length)
           log(`Updated ${uptoKey} to ${nextEpoch} for ${updated.length} validators from ${updated.at(0)} to ${updated.at(-1)}`)
@@ -786,6 +794,7 @@ async function cleanup() {
   await blockLock
   log(`Awaiting tasks...`)
   await Promise.allSettled(tasks.map(({task}) => task))
+  log(`Awaiting more tasks...`)
   await finishMoreTasks()
   log(`Closing dbs...`)
   await closeAllDBs(chainId)

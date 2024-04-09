@@ -783,7 +783,10 @@ const tryfetch = parseInt(process.env.LOG_FETCH) ?
   } :
   (...args) => fetch(...args).catch((e) => cleanup().then(() => { throw e }))
 
-const cleanupThenError = (s) => cleanup().then(() => { throw new Error(s) })
+const cleanupThenError = (s) => {
+  console.error(s)
+  cleanup().then(() => { throw new Error(s) })
+}
 
 async function cleanup() {
   if (!running) return

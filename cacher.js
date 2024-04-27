@@ -145,11 +145,11 @@ async function updateMinipoolPubkeys(finalizedBlockNumber) {
       }
     }
     minipoolsBlock = max
+    await db.transaction(() => {
+      db.put([chainId,'minipoolsBlock'], minipoolsBlock)
+      db.put([chainId,'minipoolsByPubkey'], minipoolsByPubkey)
+    })
   }
-  await db.transaction(() => {
-    db.put([chainId,'minipoolsBlock'], minipoolsBlock)
-    db.put([chainId,'minipoolsByPubkey'], minipoolsByPubkey)
-  })
 }
 
 const LISTEN_BLOCKS = (

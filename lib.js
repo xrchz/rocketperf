@@ -182,12 +182,13 @@ log(`Rocket Storage: ${await rocketStorage.getAddress()}`)
 export const getRocketAddress = name =>
   rocketStorage['getAddress(bytes32)'](ethers.id(`contract.address${name}`))
 
+export const getRocketAddressAt = (name, blockTag) =>
+  rocketStorage['getAddress(bytes32)'](ethers.id(`contract.address${name}`), {blockTag})
+
 export const rocketMinipoolManager = new ethers.Contract(
   await getRocketAddress('rocketMinipoolManager'), [
     'function getMinipoolExists(address) view returns (bool)',
     'function getMinipoolPubkey(address) view returns (bytes)',
-    'function getMinipoolCount() view returns (uint256)',
-    'function getMinipoolAt(uint256) view returns (address)',
     'function getNodeMinipoolCount(address) view returns (uint256)',
     'function getNodeMinipoolAt(address, uint256) view returns (address)'
   ], provider)
@@ -221,17 +222,8 @@ export function multicall(calls) {
     .then(res => Array.from(res[1]).map((r, i) => posts[i](r)))
 }
 
-export let minipoolsByPubkeyCount = db.get([chainId,'minipoolsByPubkeyCount']) ?? 0
-export const incrementMinipoolsByPubkeyCount = n => minipoolsByPubkeyCount += n
 export const minipoolsByPubkey = db.get([chainId,'minipoolsByPubkey']) ?? {}
-export let minipoolCount
-export const updateMinipoolCount = async () => {
-  minipoolCount = parseInt(
-    await rocketMinipoolManager.getMinipoolCount({blockTag: 'finalized'})
-  )
-}
-export const getMinipoolByPubkey = pubkey =>
-  minipoolsByPubkey[pubkey] ?? nullAddress
+export const getMinipoolByPubkey = pubkey => minipoolsByPubkey[pubkey] ?? nullAddress
 
 export const epochFromActivationInfo = activationInfo =>
   activationInfo.promoted ?

@@ -4,8 +4,7 @@ import { ethers } from 'ethers'
 import { db, dbFor, closeAllDBs, provider, chainId, beaconRpcUrl, log, multicall, secondsPerSlot, rocketStorage,
          timeSlotConvs, slotsPerEpoch, epochOfSlot, minipoolAbi, arrayMin, arrayMax,
          finishMoreTasks, arrayPromises, interruptArrayPromises, filterResolved,
-         minipoolsByPubkeyCount, minipoolsByPubkey, minipoolCount,
-         updateMinipoolCount, incrementMinipoolsByPubkeyCount, getIndexFromPubkey,
+         getRocketAddressAt, minipoolsByPubkey, getIndexFromPubkey,
          getMinipoolByPubkey, getFinalizedSlot, getPubkeyFromIndex,
          rocketMinipoolManager, FAR_FUTURE_EPOCH, epochFromActivationInfo
        } from './lib.js'
@@ -69,8 +68,7 @@ const rocketStorageGenesisBlock = rocketStorageGenesisBlockByChain[chainId]
 let withdrawalAddressBlock = db.get([chainId,'withdrawalAddressBlock'])
 if (!withdrawalAddressBlock) withdrawalAddressBlock = rocketStorageGenesisBlock
 
-async function updateWithdrawalAddresses() {
-  const finalizedBlockNumber = await provider.getBlock('finalized').then(b => b.number)
+async function updateWithdrawalAddresses(finalizedBlockNumber) {
   while (withdrawalAddressBlock < finalizedBlockNumber) {
     if (!running) break
     const min = withdrawalAddressBlock
@@ -96,20 +94,22 @@ async function updateWithdrawalAddresses() {
   }
 }
 
-async function updateMinipoolPubkeys() {
-  const prevMinipoolCount = minipoolCount
-  await updateMinipoolCount()
-  while (minipoolsByPubkeyCount < minipoolCount) {
+// TODO: delete minipoolsByPubkeyCount from db
+
+let minipoolsBlock = db.get([chainId,'minipoolsBlock'])
+if (!minipoolsBlock) minipoolsBlock = rocketStorageGenesisBlock
+
+async function updateMinipoolPubkeys(finalizedBlockNumber) {
+  while (minipoolsBlock < finalizedBlockNumber) {
     if (!running) break
-    log(`Up to ${minipoolsByPubkeyCount} out of ${minipoolCount} minipools to get pubkeys`)
-    const n = Math.min(MAX_QUERY_RANGE, minipoolCount - minipoolsByPubkeyCount)
-    const minipoolAddresses = await multicall(
-      Array(n).fill().map((_, i) => ({
-        contract: rocketMinipoolManager,
-        fn: 'getMinipoolAt',
-        args: [minipoolsByPubkeyCount + i]
-      }))
-    )
+    const min = minipoolsBlock
+    const max = Math.min(minipoolsBlock + MAX_QUERY_RANGE, finalizedBlockNumber)
+    log(`Processing minipool creations ${min}...${max}`)
+    const addresses = await Promise.all([min, max].map(blockTag => getRocketAddressAt('rocketMinipoolManager', blockTag)))
+    if (addresses[0] == addresses[1]) addresses.pop()
+    const contracts = addresses.map(addr => new ethers.Contract(addr, ['event MinipoolCreated(address indexed minipool, address indexed node, uint256 time)'], provider))
+    const logs = await Promise.all(contracts.map(contract => contract.queryFilter('MinipoolCreated', min, max))).then(a => a.flat())
+    const minipoolAddresses = logs.map(entry => entry.args[0])
     const pubkeys = await multicall(
       minipoolAddresses.map(minipoolAddress => ({
         contract: rocketMinipoolManager,
@@ -144,15 +144,12 @@ async function updateMinipoolPubkeys() {
           minipoolsByPubkey[pubkey] = minipoolAddress
       }
     }
-    incrementMinipoolsByPubkeyCount(n)
-    log(`Got pubkeys for ${minipoolsByPubkeyCount} minipools`)
+    minipoolsBlock = max
   }
-  if (minipoolCount != prevMinipoolCount) {
-    await db.transaction(() => {
-      db.put([chainId,'minipoolsByPubkeyCount'], minipoolsByPubkeyCount)
-      db.put([chainId,'minipoolsByPubkey'], minipoolsByPubkey)
-    })
-  }
+  await db.transaction(() => {
+    db.put([chainId,'minipoolsBlock'], minipoolsBlock)
+    db.put([chainId,'minipoolsByPubkey'], minipoolsByPubkey)
+  })
 }
 
 const LISTEN_BLOCKS = (
@@ -165,9 +162,10 @@ let blockLock
 if (LISTEN_BLOCKS) {
   provider.addListener('block', async () => {
     if (!blockLock) {
+      const finalizedBlockNumber = await provider.getBlock('finalized').then(b => b.number)
       blockLock = Promise.all([
-        updateWithdrawalAddresses(),
-        updateMinipoolPubkeys()
+        updateWithdrawalAddresses(finalizedBlockNumber),
+        updateMinipoolPubkeys(finalizedBlockNumber)
       ])
       await blockLock
       blockLock = false
@@ -770,6 +768,7 @@ async function processEpochs() {
   )
 
   const finalizedSlot = STANDARD_FINAL_SLOT ? await getFinalizedSlot() : OVERRIDE_FINAL_EPOCH * slotsPerEpoch
+  log(`Using finalizedSlot ${finalizedSlot}`)
   if (STANDARD_START_EPOCH) await processEpochsLoop(finalizedSlot, true)
   if (!DUTIES_ONLY) await processEpochsLoop(finalizedSlot, false)
 }

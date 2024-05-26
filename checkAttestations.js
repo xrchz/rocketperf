@@ -1,58 +1,38 @@
-import { db, slotsPerEpoch, beaconRpcUrl, chainId } from './lib.js'
+import { dbFor, chainId, log, epochFromActivationInfo } from './lib.js'
+import { createWriteStream } from 'node:fs'
 
-const start = [chainId,'validator',314965,'attestation',108713]
+let keys = 0
+const dbvis = [1, 100000, 200000, 250000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1100000, 1200000, 1300000, 1400000]
 
-const cleanupThenError = async (s) => { throw new Error(s) }
+const brokenData = createWriteStream('brokenData.txt')
+async function addLine(line) {
+  if (brokenData.pending)
+    await new Promise(resolve => brokenData.once('ready', resolve))
+  if (brokenData.writableNeedDrain)
+    await new Promise(resolve => brokenData.once('drain', resolve))
+  brokenData.write(line)
+}
 
-let count = 0
-for (const key of db.getKeys({start})) {
-  if (++count % 10000 == 0) console.log(`Up to key ${key}`)
-  const [chainIdLit, validatorLit, index, attestationLit, epoch] = key
-  if (chainIdLit == chainId && validatorLit === 'validator' && attestationLit === 'attestation') {
-    const nextEpoch = db.get([chainId,'validator',index,'nextEpoch'])
-    if (!nextEpoch || nextEpoch <= parseInt(epoch)) continue
-    const attestation = db.get(key)
-    if (!attestation.attested)
-      continue // console.warn(`${index} (${nextEpoch}) missed attestation for ${attestation.slot} (${epoch})`)
-    else if (!('reward' in attestation) || !('ideal' in attestation)) {
-      console.error(`${index} attested for ${attestation.slot} in ${attestation.attested.slot} but rewards not recorded, fixing...`)
-      console.log(JSON.stringify(attestation))
-      const firstSlotInEpoch = parseInt(epoch) * slotsPerEpoch
-      const attestationRewardsUrl = new URL(
-        `${beaconRpcUrl}/eth/v1/beacon/rewards/attestations/${epoch}`
-      )
-      const postOptions = {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify([index])
+for (const dbvi of dbvis) {
+  const dbv = dbFor([chainId, 'validator', dbvi])
+  for (const key of dbv.getKeys()) {
+    if (++keys % 100000 == 0) log(`Up to key ${key}`)
+    const [validatorIndex, attestationLit, epoch] = key
+    if (attestationLit === 'attestation') {
+      const activationInfo = dbv.get([validatorIndex,'activationInfo'])
+      const activationEpoch = activationInfo && epochFromActivationInfo(activationInfo)
+      if (!activationEpoch) throw new Error(`No activationEpoch for ${validatorIndex}`)
+      const nextEpoch = dbv.get([validatorIndex,'nextEpoch'])
+      if (!nextEpoch || nextEpoch <= parseInt(epoch)) continue
+      if (parseInt(epoch) < activationEpoch) {
+        await addLine(`${validatorIndex}: ${activationEpoch} > ${epoch}\n`)
+        continue
       }
-      const attestationRewards = await fetch(attestationRewardsUrl, postOptions).then(async res => {
-        if (res.status !== 200)
-          await cleanupThenError(`Got ${res.status} fetching ${attestationRewardsUrl}: ${await res.text()}`)
-        const json = await res.json()
-        return json.data
-      })
-      const effectiveBalancesUrl = new URL(
-        `${beaconRpcUrl}/eth/v1/beacon/states/${firstSlotInEpoch}/validators`
-      )
-      const wrappedPostOptions = {...postOptions, body: JSON.stringify({ids: [index]})}
-      const effectiveBalances = await fetch(effectiveBalancesUrl, wrappedPostOptions).then(async res => {
-        if (res.status !== 200)
-          await cleanupThenError(`Got ${res.status} fetching ${effectiveBalancesUrl}: ${await res.text()}`)
-        const json = await res.json()
-        return new Map(json.data.map(({index, validator: {effective_balance}}) => [index, effective_balance]))
-      })
-      const effectiveBalance = effectiveBalances.get(index)
-      const {validator_index, head, target, source, inactivity} = attestationRewards.total_rewards[0]
-      if (validator_index != index) await cleanupThenError(`Wrong total_rewards`)
-      attestation.reward = {head, target, source, inactivity}
-      const ideal = attestationRewards.ideal_rewards.find(x => x.effective_balance === effectiveBalance)
-      if (!ideal) await cleanupThenError(`Could not get ideal rewards for ${firstSlotInEpoch} ${index} with ${effectiveBalance}`)
-      attestation.ideal = {}
-      for (const key of Object.keys(attestation.reward))
-        attestation.ideal[key] = ideal[key]
-      console.log(`Adding attestation reward @ ${key}: ${Object.entries(attestation.reward)} / ${Object.entries(attestation.ideal)}`)
-      await db.put(key, attestation)
+      const attestation = dbv.get(key)
+      if (attestation?.attested && !('reward' in attestation) || !('ideal' in attestation)) {
+        await addLine(`${validatorIndex}: ${epoch}\n`)
+      }
     }
   }
 }
+brokenData.end()

@@ -194,10 +194,10 @@ async function getActivationInfo(validatorIndex) {
     const res = await tryfetch(url)
     const text = await res.clone().text()
     const json = text == 'not found' ? {data: {validator: {activation_epoch: FAR_FUTURE_EPOCH}}} :
-      await res.json().catch(e => cleanup().then(() => {
+      await res.json().catch(e => {
         console.error(`Error getting JSON from ${url}`)
-        throw e
-      }))
+        return cleanup().then(() => { throw e })
+      })
     const epoch = parseInt(json?.data?.validator?.activation_epoch)
     if (!(0 <= epoch))
       await cleanupThenError(`Failed to get activation_epoch for ${validatorIndex}`)
@@ -784,7 +784,7 @@ const tryfetch = parseInt(process.env.LOG_FETCH) ?
 
 const cleanupThenError = (s) => {
   console.error(s)
-  cleanup().then(() => { throw new Error(s) })
+  return cleanup().then(() => { throw new Error(s) })
 }
 
 async function cleanup() {

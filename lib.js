@@ -91,7 +91,13 @@ const makeOpenShards = (chainId, defaultStep, bound, exceptions) => {
 }
 
 const dbs = {
-  1: makeOpenShards(1, 100_000, 1_500_000, {200_000: 50_000, 250_000: 50_000})
+  1: makeOpenShards(1, 100_000, 1_800_000,
+                    {200_000: 50_000,
+                     250_000: 50_000,
+                     400_000: 50_000,
+                     450_000: 50_000,
+                     500_000: 50_000,
+                     550_000: 50_000})
 }
 export const closeAllDBs = (chainId) => Promise.all(dbs[chainId].map(({shard}) => shard.close()))
 

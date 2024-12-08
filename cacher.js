@@ -209,7 +209,7 @@ async function getActivationInfo(validatorIndex) {
     }
   }
   if (!('promoted' in activationInfo)) {
-    const pubkey = await getPubkeyFromIndex(validatorIndex) || fixAnkrPubkeyFromIndex.get(validatorIndex)
+    const pubkey = await getPubkeyFromIndex(validatorIndex) // || fixAnkrPubkeyFromIndex.get(validatorIndex)
     const minipoolAddress = getMinipoolByPubkey(pubkey)
     const minipoolExists = await rocketMinipoolManager.getMinipoolExists(minipoolAddress)
     if (!minipoolExists)
@@ -624,6 +624,7 @@ async function processEpochsLoop(finalizedSlot, dutiesOnly) {
   }
 
   // TODO: ignore exited validators?
+  // TODO: sort by index?
   const validatorNextEpochs = Array.from(validatorActivationEpochs.entries()).map(
     ([validatorIndex, activationEpoch]) => [
       validatorIndex,
@@ -756,7 +757,9 @@ async function processEpochs() {
     validatorIdsToProcess.map(validatorIndex =>
       async () => {
         if (!(0 <= validatorIndex)) return
-        const epoch = epochFromActivationInfo(await getActivationInfo(validatorIndex))
+        // if ([if you need to ignore validators].includes(validatorIndex)) return
+        // if ([19026].includes(validatorIndex)) return
+        const epoch = await getActivationInfo(validatorIndex).then(x => epochFromActivationInfo(x)).catch(y => `ERROR ${y}`)
         if (typeof epoch == 'number')
           validatorActivationEpochs.set(validatorIndex, epoch)
         else
@@ -785,6 +788,7 @@ const tryfetch = parseInt(process.env.LOG_FETCH) ?
   (...args) => fetch(...args).catch((e) => cleanup().then(() => { throw e }))
 
 const cleanupThenError = (s) => {
+  console.log(`Got to cleanupThenError with ${s}`)
   console.error(s)
   return cleanup().then(() => { throw new Error(s) })
 }
@@ -807,7 +811,7 @@ async function cleanup() {
 process.on('SIGINT', async () => {
   log(`Received interrupt...`)
   if (!running) {
-    log(`Alreading shutting down...`)
+    log(`Already shutting down...`)
     return
   }
   await cleanup()

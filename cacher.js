@@ -767,6 +767,8 @@ async function processEpochs() {
     (numLeft) => log(`Getting activationInfo, ${numLeft} validators left`)
   )
 
+  if (process.env.FIXUP_EPOCHS) return
+
   const finalizedSlot = STANDARD_FINAL_SLOT ? await getFinalizedSlot() : OVERRIDE_FINAL_EPOCH * slotsPerEpoch
   log(`Using finalizedSlot ${finalizedSlot}`)
   if (STANDARD_START_EPOCH) await processEpochsLoop(finalizedSlot, true)
@@ -823,23 +825,34 @@ if (process.env.FIXUP_EPOCHS) {
         vs.add(parseInt(line))
       return vs
     }
-    else
+    else if (s)
       return new Set(s.split(',').map(i => parseInt(i)))
+    else
+      return new Set()
   }
   const epochs = await getInts(process.env.FIXUP_EPOCHS)
   const validatorIds = await getInts(process.env.FIXUP_VALIDATORS || '')
+  const fn = DUTIES_ONLY ? getAttestationDuties : processEpoch
+  if (!validatorIds.size) {
+    await processEpochs() // to fill validatorActivationEpochs
+  }
   for (const epoch of epochs.values()) {
     if (!running) break
     const state = {}
     const onCompletion = () => { state.resolved = true }
+    const vids = validatorIds.size ? validatorIds : new Set(
+      Array.from(validatorActivationEpochs.entries()).flatMap(([id, activationEpoch]) =>
+        activationEpoch <= epoch ? [id] : [])
+    )
     tasks.push({
-      state, task: processEpoch(epoch, validatorIds).then(onCompletion)
+      state, task: fn(epoch, vids).then(onCompletion)
     })
     while (tasks.length >= NUM_EPOCH_TASKS) {
       await Promise.race(tasks.map(({task}) => task))
       filterResolved(tasks)
     }
   }
+  await Promise.allSettled(tasks.map(({task}) => task))
   await cleanup()
 }
 else if (!process.env.ONLY_BLOCK_LISTENER) {
